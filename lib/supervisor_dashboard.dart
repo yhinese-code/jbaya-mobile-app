@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
+
+import 'core/api_client.dart';
+
+// Legacy analytics screen from the prototype (reads /analytics/summary). Not linked from the menus yet.
 
 class SupervisorDashboardScreen extends StatefulWidget {
   const SupervisorDashboardScreen({super.key});
@@ -21,17 +23,16 @@ class _SupervisorDashboardScreenState extends State<SupervisorDashboardScreen> {
 
   Future<void> _fetchAnalytics() async {
     try {
-      final response = await http.get(Uri.parse('http://127.0.0.1:8000/analytics/summary'));
-      if (response.statusCode == 200) {
-        setState(() {
-          _analyticsData = jsonDecode(response.body);
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      setState(() { _isLoading = false; });
+      final res = await ApiClient.instance.get('/analytics/summary');
+      setState(() {
+        _analyticsData = Map<String, dynamic>.from(res as Map);
+        _isLoading = false;
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تعذر الاتصال بخادم التحليلات', textDirection: TextDirection.rtl), backgroundColor: Colors.red),
+        SnackBar(content: Text(e.message), backgroundColor: Colors.red),
       );
     }
   }
@@ -48,7 +49,7 @@ class _SupervisorDashboardScreenState extends State<SupervisorDashboardScreen> {
           ? const Center(child: CircularProgressIndicator())
           : Padding(
               padding: const EdgeInsets.all(24.0),
-              chn: Column(
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   const Text('مؤشرات الأداء الميداني (أمانة بغداد)', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF004D40))),

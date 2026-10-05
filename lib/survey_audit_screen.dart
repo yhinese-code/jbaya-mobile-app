@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
+
+import 'core/api_client.dart';
+import 'core/session.dart';
+
+// Legacy survey screen from the prototype (POST /survey/audit-property). Not linked from the menus yet.
 
 class SurveyAuditScreen extends StatefulWidget {
   const SurveyAuditScreen({super.key});
@@ -24,41 +27,31 @@ class _SurveyAuditScreenState extends State<SurveyAuditScreen> {
 
     setState(() => _isLoading = true);
 
-    // Use 10.0.2.2 for Android Emulator, or your server IP for physical devices
-    final url = Uri.parse('http://10.0.2.2:8000/survey/audit-property');
-
     try {
-      final response = await http.post(
-        url,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          "serial_number": _serialController.text.isEmpty ? null : _serialController.text,
-          "mahalla": _mahallaController.text,
-          "house_address": _addressController.text,
-          "property_status": _propertyStatus,
-          "surveyor_id": "SURVEYOR-01", // Can be dynamic based on logged-in user
-          "initial_reading": double.tryParse(_readingController.text) ?? 0.0,
-        }),
-      );
-
-      if (response.statusCode == 200) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('تم تسجيل العقار بنجاح في الشبكة الخاصة'), backgroundColor: Colors.green),
-        );
-        _formKey.currentState!.reset();
-        _serialController.clear();
-        _mahallaController.clear();
-        _addressController.clear();
-        _readingController.clear();
-      } else {
-        throw Exception('Server returned status ${response.statusCode}');
-      }
-    } catch (e) {
+      await ApiClient.instance.post('/survey/audit-property', {
+        "serial_number": _serialController.text.isEmpty ? null : _serialController.text,
+        "mahalla": _mahallaController.text,
+        "house_address": _addressController.text,
+        "property_status": _propertyStatus,
+        "surveyor_id": Session.instance.employeeCode,
+        "initial_reading": double.tryParse(_readingController.text) ?? 0.0,
+      });
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('فشل مزامنة البيانات: $e'), backgroundColor: Colors.red),
+        const SnackBar(content: Text('تم تسجيل العقار بنجاح في الشبكة الخاصة'), backgroundColor: Colors.green),
+      );
+      _formKey.currentState!.reset();
+      _serialController.clear();
+      _mahallaController.clear();
+      _addressController.clear();
+      _readingController.clear();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('فشل مزامنة البيانات: ${e.message}'), backgroundColor: Colors.red),
       );
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 

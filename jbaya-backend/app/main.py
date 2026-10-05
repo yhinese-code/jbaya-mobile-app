@@ -1,0 +1,44 @@
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from .config import settings
+from .db import apply_schema, close_pool, init_pool
+from .routers import admin, auth, collector, command, legacy, supervisor
+
+_INSECURE = {"dev-only-change-me-jwt-0000000000000000", "dev-only-change-me-otp-0000000000000000", "dev-only-change-me-master-0000000000000"}
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_pool()
+    apply_schema()
+    if {settings.JWT_SECRET, settings.OTP_SECRET, settings.MASTER_CODE_SECRET} & _INSECURE:
+        print("WARNING: development secrets in use. Set JWT_SECRET, OTP_SECRET and MASTER_CODE_SECRET in .env before going live.")
+    if settings.WHATSAPP_MODE != "live":
+        print("WhatsApp is in CONSOLE mode: messages (including OTP codes) are printed here, not sent.")
+    yield
+    close_pool()
+
+
+app = FastAPI(title="Jbaya Collection System API", version="0.2.0", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origin_regex=settings.CORS_ORIGIN_REGEX,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(auth.router)
+app.include_router(collector.router)
+app.include_router(supervisor.router)
+app.include_router(command.router)
+app.include_router(admin.router)
+app.include_router(legacy.router)
+
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
