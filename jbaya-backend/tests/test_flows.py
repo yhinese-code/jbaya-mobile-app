@@ -4,6 +4,7 @@ Run:  set TEST_DB_CONN, then  python -m pytest -q tests
 WARNING: the test database is wiped on every run. Never point TEST_DB_CONN at real data.
 """
 import os
+import tempfile
 import time
 
 import psycopg2
@@ -13,6 +14,8 @@ TEST_DB = os.environ.get("TEST_DB_CONN", "postgresql://postgres@localhost:5432/j
 os.environ["DB_CONN"] = TEST_DB
 os.environ["WHATSAPP_MODE"] = "console"
 os.environ["OTP_RESEND_COOLDOWN_SECONDS"] = "0"
+os.environ["REQUIRE_METER_PHOTO"] = "false"   # phase 1 tests switch it on
+os.environ["STORAGE_DIR"] = os.path.join(tempfile.gettempdir(), "jbaya-test-storage")
 
 from fastapi.testclient import TestClient  # noqa: E402
 

@@ -50,6 +50,27 @@ Limit: 3 uses per collector per day. Every use is listed at `GET /command/master
 The OTP is generated, hashed and checked only on the server: 6 digits, 5-minute expiry, 3 attempts, 60s resend cooldown.
 The audit log is hash-chained; `GET /command/audit/verify` detects any edited/deleted row.
 
+## Phase 1 additions
+
+**Collector:** meter photo is required for readings (`REQUIRE_METER_PHOTO`). On Android/iOS the phone reads
+the digits (OCR) and the server flags `ocr_mismatch` when the typed reading differs. A collector holding more than
+`CASH_IN_HAND_CAP_IQD` in un-handed cash cannot issue new bills until the supervisor reconciles him.
+`GET /collector/summary` (today vs target, cash in hand), `GET /collector/receipts`, `POST /sos`.
+
+**Supervisor:** `GET /supervisor/team` (activity counts only, no money, to keep reconciliation blind),
+`POST /supervisor/reconciliations` with `denominations` (50,000 … 250 IQD notes). A difference above
+`RECON_TOLERANCE_IQD` must be resolved with `POST /supervisor/reconciliations/{id}/resolve`
+(`collector_paid` / `salary_deduction` for shortages, `deposit_surplus` for surpluses, `escalate` for both).
+`POST /supervisor/deposits` deposits all resolved cash with a bank-slip photo.
+
+**Finance:** `GET /finance/deposits`, `GET /finance/deposits/{id}/slip`, `POST /finance/deposits/{id}/decision`
+(`verify` / `reject`; a rejected deposit puts the cash back on the supervisor's books).
+
+**Command / alerts:** `GET /alerts`, `POST /alerts/{id}` (`acknowledge` / `close`), `GET /command/escalations`.
+
+Photos are stored under `jbaya-backend/storage/` (ignored by Git) and only served through these authenticated endpoints.
+Back this folder up together with the database.
+
 ## WhatsApp templates to create in Meta Business Manager
 
 Meta only allows business-initiated messages through approved templates, and codes must use an

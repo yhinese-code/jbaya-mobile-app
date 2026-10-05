@@ -1,21 +1,45 @@
 import 'package:flutter/material.dart';
 
 import '../../core/session.dart';
+import 'deposits_verification_tab.dart';
 
 // Finance portal: still demo numbers. Real ledger, charts and analytics arrive in Phase 4.
-// --- 7. SEPARATE FINANCIAL PORTAL SCREEN ---
 class FinancialPortalScreen extends StatelessWidget {
   const FinancialPortalScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('البوابة المالية المركزية (إيرادات وتحصيلات)', style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.green.shade800,
-        foregroundColor: Colors.white,
-        actions: const [LogoutButton()],
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('البوابة المالية المركزية (إيرادات وتحصيلات)', style: TextStyle(fontWeight: FontWeight.bold)),
+          backgroundColor: Colors.green.shade800,
+          foregroundColor: Colors.white,
+          actions: const [LogoutButton()],
+          bottom: const TabBar(
+            labelColor: Colors.white,
+            unselectedLabelColor: Colors.white70,
+            indicatorColor: Colors.white,
+            tabs: [
+              Tab(icon: Icon(Icons.account_balance), text: 'تدقيق الإيداعات'),
+              Tab(icon: Icon(Icons.summarize), text: 'الملخص (تجريبي)'),
+            ],
+          ),
+        ),
+        body: const TabBarView(children: [DepositsVerificationTab(), _FinanceSummaryDemo()]),
       ),
+    );
+  }
+}
+
+/// Demo numbers from the prototype. Replaced by the real ledger and charts in Phase 4.
+class _FinanceSummaryDemo extends StatelessWidget {
+  const _FinanceSummaryDemo();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24.0),
         child: Column(

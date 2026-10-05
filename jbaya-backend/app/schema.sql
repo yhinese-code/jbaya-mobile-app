@@ -203,3 +203,52 @@ CREATE TABLE IF NOT EXISTS smart_meter_telemetry (
     battery_voltage FLOAT,
     tamper_flag BOOLEAN
 );
+
+-- ---------------------------------------------------------------
+-- Phase 1 additions (ALTER ... IF NOT EXISTS keeps existing databases working)
+
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS daily_target_iqd NUMERIC(14,2);
+
+ALTER TABLE bills ADD COLUMN IF NOT EXISTS photo_path TEXT;
+ALTER TABLE bills ADD COLUMN IF NOT EXISTS ocr_reading NUMERIC(14,3);
+
+ALTER TABLE reconciliations ADD COLUMN IF NOT EXISTS denominations JSONB;
+ALTER TABLE reconciliations ADD COLUMN IF NOT EXISTS resolution_status VARCHAR(20) NOT NULL DEFAULT 'none_needed';
+ALTER TABLE reconciliations ADD COLUMN IF NOT EXISTS resolution_action VARCHAR(30);
+ALTER TABLE reconciliations ADD COLUMN IF NOT EXISTS resolution_note TEXT;
+ALTER TABLE reconciliations ADD COLUMN IF NOT EXISTS resolved_by INT REFERENCES employees(id);
+ALTER TABLE reconciliations ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMPTZ;
+ALTER TABLE reconciliations ADD COLUMN IF NOT EXISTS deposit_id INT;
+
+-- Supervisor -> bank. Finance verifies against the bank statement.
+CREATE TABLE IF NOT EXISTS bank_deposits (
+    id                  SERIAL PRIMARY KEY,
+    supervisor_id       INT NOT NULL REFERENCES employees(id),
+    amount              NUMERIC(14,2) NOT NULL,      -- amount written on the bank slip
+    expected_amount     NUMERIC(14,2) NOT NULL,      -- cash the supervisor counted from collectors
+    difference          NUMERIC(14,2) NOT NULL,      -- amount - expected
+    bank_name           TEXT NOT NULL,
+    slip_number         VARCHAR(60) NOT NULL,
+    slip_photo_path     TEXT NOT NULL,
+    status              VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','verified','rejected')),
+    finance_note        TEXT,
+    verified_by         INT REFERENCES employees(id),
+    verified_at         TIMESTAMPTZ,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS sos_alerts (
+    id                  SERIAL PRIMARY KEY,
+    employee_id         INT NOT NULL REFERENCES employees(id),
+    lat                 DOUBLE PRECISION,
+    lng                 DOUBLE PRECISION,
+    gps_accuracy_m      REAL,
+    note                TEXT,
+    status              VARCHAR(20) NOT NULL DEFAULT 'open' CHECK (status IN ('open','acknowledged','closed')),
+    acknowledged_by     INT REFERENCES employees(id),
+    acknowledged_at     TIMESTAMPTZ,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+ALTER TABLE reconciliations ADD COLUMN IF NOT EXISTS settled_cash NUMERIC(14,2);
+-- reconciliations made before Phase 1: the counted cash is what the supervisor holds
+UPDATE reconciliations SET settled_cash = counted_cash WHERE settled_cash IS NULL AND resolution_status = 'none_needed';

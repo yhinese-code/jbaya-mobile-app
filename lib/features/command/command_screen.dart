@@ -6,6 +6,8 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../core/session.dart';
+import '../shared/alerts_tab.dart';
+import 'escalations_tab.dart';
 import 'master_code_tab.dart';
 
 // Central Command. Map, analytics, receipts and messages tabs are still demo data (real versions in Phase 2).
@@ -117,6 +119,8 @@ class _CentralCommandScreenState extends State<CentralCommandScreen> {
               NavigationRailDestination(icon: Icon(Icons.receipt_long_outlined), selectedIcon: Icon(Icons.receipt_long), label: Text('سجل الإيصالات')),
               NavigationRailDestination(icon: Icon(Icons.message_outlined), selectedIcon: Icon(Icons.message), label: Text('الرسائل (Ping)')),
               NavigationRailDestination(icon: Icon(Icons.key_outlined), selectedIcon: Icon(Icons.key), label: Text('الرمز الرئيسي')),
+              NavigationRailDestination(icon: Icon(Icons.sos_outlined), selectedIcon: Icon(Icons.sos), label: Text('الاستغاثات')),
+              NavigationRailDestination(icon: Icon(Icons.report_outlined), selectedIcon: Icon(Icons.report), label: Text('فروقات نقدية')),
             ],
           ),
           const VerticalDivider(thickness: 1, width: 1),
@@ -135,6 +139,8 @@ class _CentralCommandScreenState extends State<CentralCommandScreen> {
       case 2: return _buildReceiptLogsTab();
       case 3: return _buildMessagesTab();
       case 4: return const MasterCodeTab();
+      case 5: return const AlertsTab();
+      case 6: return const EscalationsTab();
       default: return const Center(child: Text('قريباً...'));
     }
   }

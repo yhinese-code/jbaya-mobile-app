@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../core/format.dart';
 import '../../core/location_service.dart';
+import '../../core/photo_service.dart';
 import 'widgets/otp_panel.dart';
 import 'widgets/receipt_card.dart';
 
@@ -29,6 +30,7 @@ class _CollectionScreenState extends State<CollectionScreen> {
   bool _otpSent = false;
   int _resendAfter = 60;
   Map<String, dynamic>? _receipt;
+  CapturedPhoto? _photo;
 
   Map<String, dynamic> get p => widget.property;
   bool get _meterWorking => p['meter_status'] == 'working';
@@ -68,6 +70,7 @@ class _CollectionScreenState extends State<CollectionScreen> {
 
   Future<void> _loadBill(int id) => _run(() async {
         final res = await ApiClient.instance.get('/bills/$id');
+        if (!mounted) return;
         setState(() => _bill = Map<String, dynamic>.from(res as Map));
       });
 
@@ -79,6 +82,9 @@ class _CollectionScreenState extends State<CollectionScreen> {
             throw Exception('يرجى إدخال قراءة العداد بشكل صحيح');
           }
         }
+        if (!_useEstimate && _photo == null) {
+          throw Exception('يجب تصوير العداد قبل إصدار الفاتورة');
+        }
         final gps = await LocationService.current();
         final res = await ApiClient.instance.post('/bills', {
           'property_id': p['id'],
@@ -88,8 +94,11 @@ class _CollectionScreenState extends State<CollectionScreen> {
           'lng': gps.lng,
           'gps_accuracy_m': gps.accuracy,
           'is_mocked': gps.isMocked,
+          'photo_base64': _photo?.base64,
+          'ocr_reading': _useEstimate ? null : _photo?.ocrReading,
         });
         final bill = Map<String, dynamic>.from(res as Map);
+        if (!mounted) return;
         setState(() {
           _bill = bill;
           _otpSent = bill['otp'] != null;
@@ -99,8 +108,21 @@ class _CollectionScreenState extends State<CollectionScreen> {
         });
       });
 
+  Future<void> _takePhoto() => _run(() async {
+        final photo = await PhotoService.capture(runOcr: true);
+        if (photo == null || !mounted) return;
+        setState(() {
+          _photo = photo;
+          if (photo.ocrReading != null && _readingController.text.trim().isEmpty) {
+            final v = photo.ocrReading!;
+            _readingController.text = v % 1 == 0 ? v.toInt().toString() : v.toString();
+          }
+        });
+      });
+
   Future<void> _sendOtp() => _run(() async {
         final res = await ApiClient.instance.post('/bills/${_bill!['id']}/send-otp');
+        if (!mounted) return;
         setState(() {
           _otpSent = true;
           _resendAfter = (asNum(res['resend_after_seconds']) ?? 60).toInt();
@@ -113,6 +135,7 @@ class _CollectionScreenState extends State<CollectionScreen> {
       'use_master_code': useMaster,
       'reason': reason,
     });
+    if (!mounted) return;
     setState(() => _receipt = Map<String, dynamic>.from(res as Map));
   }
 
@@ -202,6 +225,27 @@ class _CollectionScreenState extends State<CollectionScreen> {
                   ? const Text('العداد مسجل كعامل: التقدير يحتاج موافقة المشرف', style: TextStyle(color: Colors.orange))
                   : null,
             ),
+            OutlinedButton.icon(
+              onPressed: _loading ? null : _takePhoto,
+              icon: const Icon(Icons.camera_alt),
+              label: Text(_photo == null
+                  ? (_useEstimate ? 'تصوير العداد (اختياري)' : 'تصوير العداد (إلزامي)')
+                  : 'إعادة التصوير'),
+            ),
+            if (_photo != null) ...[
+              const SizedBox(height: 8),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.memory(_photo!.bytes, height: 180, fit: BoxFit.cover),
+              ),
+              if (_photo!.ocrReading != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text('قراءة الكاميرا: ${_photo!.ocrReading}  (تأكد من مطابقتها للعداد)',
+                      style: const TextStyle(color: Colors.teal, fontWeight: FontWeight.bold)),
+                ),
+            ],
+            const SizedBox(height: 10),
             if (!_useEstimate)
               TextField(
                 controller: _readingController,

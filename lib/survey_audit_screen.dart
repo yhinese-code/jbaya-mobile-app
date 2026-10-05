@@ -99,7 +99,7 @@ class _SurveyAuditScreenState extends State<SurveyAuditScreen> {
               ),
               const SizedBox(height: 20),
               DropdownButtonFormField<String>(
-                value: _propertyStatus,
+                initialValue: _propertyStatus,
                 decoration: const InputDecoration(labelText: 'حالة البنية التحتية للعداد', border: OutlineInputBorder()),
                 items: const [
                   DropdownMenuItem(value: 'active_smart', child: Text('عداد ذكي فعال (Active NB-IoT)')),

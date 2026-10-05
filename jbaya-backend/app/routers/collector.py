@@ -10,7 +10,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from .. import audit, billing, codes, whatsapp
+from .. import audit, billing, codes, files, whatsapp
 from ..config import settings
 from ..db import dict_cursor, get_conn
 from ..security import require_roles
@@ -67,6 +67,15 @@ def _check_gps(lat: float, lng: float, accuracy: float | None, is_mocked: bool =
         raise HTTPException(422, f"دقة الموقع ضعيفة ({accuracy:.0f} م). انتظر قليلاً في مكان مفتوح ثم أعد الالتقاط")
 
 
+def cash_in_hand(cur, collector_id: int) -> float:
+    """Cash the collector is carrying: receipts not yet handed to the supervisor."""
+    cur.execute(
+        "SELECT COALESCE(SUM(total_amount), 0) AS s FROM receipts WHERE collector_id = %s AND reconciliation_id IS NULL",
+        (collector_id,),
+    )
+    return float(cur.fetchone()["s"])
+
+
 def _num(x):
     return float(x) if x is not None else None
 
@@ -88,6 +97,8 @@ def _bill_out(b: dict, p: dict | None = None) -> dict:
         "status": b["status"],
         "flags": b["flags"],
         "review_note": b.get("review_note"),
+        "has_photo": bool(b.get("photo_path")),
+        "ocr_reading": _num(b.get("ocr_reading")),
     }
     if p:
         out["property_code"] = p["property_code"]
@@ -275,6 +286,8 @@ class BillIn(BaseModel):
     lng: float | None = None
     gps_accuracy_m: float | None = None
     is_mocked: bool = False
+    photo_base64: str | None = Field(None, max_length=6_000_000)   # meter photo (required for readings)
+    ocr_reading: float | None = None                                # what the phone's OCR read, if available
 
 
 @router.post("/bills")
@@ -283,6 +296,14 @@ def create_bill(body: BillIn, user: dict = Depends(collector_only)):
         p = _load_property(cur, body.property_id, user, lock=True)
         if p["status"] != "active":
             raise HTTPException(409, "يجب تأكيد رقم المواطن (OTP) قبل الجباية")
+
+        held = cash_in_hand(cur, user["id"])
+        if held >= settings.CASH_IN_HAND_CAP_IQD:
+            audit.log(cur, user["id"], "cash_cap_blocked", "employee", user["employee_code"], {"cash_in_hand": held})
+            conn.commit()
+            raise HTTPException(423, f"تجاوزت الحد الأعلى للنقد بحوزتك ({held:,.0f} د.ع). سلّم النقد للمشرف قبل متابعة الجباية")
+        if body.method == "reading" and settings.REQUIRE_METER_PHOTO and not body.photo_base64:
+            raise HTTPException(422, "يجب تصوير العداد قبل إصدار الفاتورة")
 
         extra_flags = []
         if body.lat is None or body.lng is None:
@@ -312,14 +333,22 @@ def create_bill(body: BillIn, user: dict = Depends(collector_only)):
 
         reading = body.current_reading if body.method == "reading" else None
         calc = billing.compute(cur, p, tariff, body.method, reading)
+        if reading is not None and body.ocr_reading is not None \
+                and abs(body.ocr_reading - reading) > settings.OCR_MISMATCH_TOLERANCE:
+            extra_flags.append("ocr_mismatch")
+        if body.method == "reading" and not body.photo_base64:
+            extra_flags.append("no_photo")
         calc["flags"] = calc["flags"] + extra_flags
+        photo_path = files.save_photo(body.photo_base64, "meters") if body.photo_base64 else None
         cur.execute(
             """INSERT INTO bills (property_id, collector_id, visit_type, billing_method, previous_reading, current_reading,
-                                  consumption, unit_rate, period_days, gov_amount, company_fee, total_amount, status, flags)
-               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *""",
+                                  consumption, unit_rate, period_days, gov_amount, company_fee, total_amount, status, flags,
+                                  photo_path, ocr_reading)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *""",
             (p["id"], user["id"], calc["visit_type"], calc["billing_method"], calc["previous_reading"],
              calc["current_reading"], calc["consumption"], calc["unit_rate"], calc["period_days"],
-             calc["gov_amount"], calc["company_fee"], calc["total_amount"], calc["status"], json.dumps(calc["flags"])),
+             calc["gov_amount"], calc["company_fee"], calc["total_amount"], calc["status"], json.dumps(calc["flags"]),
+             photo_path, body.ocr_reading),
         )
         bill = cur.fetchone()
         audit.log(cur, user["id"], "bill_created", "bill", bill["id"],
@@ -372,8 +401,8 @@ def verify_bill(bill_id: int, body: VerifyIn, user: dict = Depends(collector_onl
                 else:
                     rtype = "actual"
                 cur.execute(
-                    "INSERT INTO meter_readings (property_id, bill_id, reading, reading_type, taken_by) VALUES (%s,%s,%s,%s,%s)",
-                    (p["id"], b["id"], b["current_reading"], rtype, user["id"]),
+                    "INSERT INTO meter_readings (property_id, bill_id, reading, reading_type, photo_url, taken_by) VALUES (%s,%s,%s,%s,%s,%s)",
+                    (p["id"], b["id"], b["current_reading"], rtype, b.get("photo_path"), user["id"]),
                 )
             cur.execute("SELECT 'RCP-' || nextval('receipt_no_seq')::text AS no")
             receipt_no = cur.fetchone()["no"]
@@ -409,3 +438,96 @@ def verify_bill(bill_id: int, body: VerifyIn, user: dict = Depends(collector_onl
         "collector_code": user["employee_code"],
         "receipt_whatsapp_sent": receipt_sent,
     }
+
+
+@router.get("/bills/{bill_id}/photo")
+def bill_photo(bill_id: int, user: dict = Depends(require_roles("collector", "supervisor", "command", "finance"))):
+    with get_conn() as conn, dict_cursor(conn) as cur:
+        b = _load_bill(cur, bill_id, user)
+        if user["role"] == "supervisor":
+            cur.execute("SELECT supervisor_id FROM employees WHERE id = %s", (b["collector_id"],))
+            if cur.fetchone()["supervisor_id"] != user["id"]:
+                raise HTTPException(403, "هذه الفاتورة ليست ضمن فريقك")
+    photo = files.load_photo(b.get("photo_path"))
+    if not photo:
+        raise HTTPException(404, "لا توجد صورة لهذه الفاتورة")
+    return photo
+
+
+# ------------------------------------------------------------------ collector dashboard, receipts, SOS
+
+@router.get("/collector/summary")
+def my_summary(user: dict = Depends(collector_only)):
+    with get_conn() as conn, dict_cursor(conn) as cur:
+        cur.execute(
+            """SELECT COALESCE(SUM(total_amount), 0) AS collected, COUNT(*) AS receipts,
+                      COUNT(*) FILTER (WHERE verification_method = 'master_code') AS master_uses
+               FROM receipts WHERE collector_id = %s AND issued_at >= date_trunc('day', NOW())""",
+            (user["id"],),
+        )
+        today = cur.fetchone()
+        cur.execute(
+            "SELECT COUNT(*) AS n FROM properties WHERE registered_by = %s AND activated_at >= date_trunc('day', NOW())",
+            (user["id"],),
+        )
+        registrations = cur.fetchone()["n"]
+        cur.execute("SELECT daily_target_iqd FROM employees WHERE id = %s", (user["id"],))
+        target = cur.fetchone()["daily_target_iqd"]
+        held = cash_in_hand(cur, user["id"])
+        cur.execute("SELECT id, status, created_at FROM sos_alerts WHERE employee_id = %s AND status <> 'closed' "
+                    "ORDER BY created_at DESC LIMIT 1", (user["id"],))
+        sos = cur.fetchone()
+    target = float(target) if target is not None else settings.COLLECTOR_DAILY_TARGET_IQD
+    return {
+        "collected_today": float(today["collected"]),
+        "receipts_today": today["receipts"],
+        "master_code_uses_today": today["master_uses"],
+        "registrations_today": registrations,
+        "daily_target": target,
+        "cash_in_hand": held,
+        "cash_cap": settings.CASH_IN_HAND_CAP_IQD,
+        "cash_cap_reached": held >= settings.CASH_IN_HAND_CAP_IQD,
+        "open_sos": {"id": sos["id"], "status": sos["status"], "created_at": sos["created_at"].isoformat()} if sos else None,
+    }
+
+
+@router.get("/collector/receipts")
+def my_receipts(user: dict = Depends(collector_only)):
+    with get_conn() as conn, dict_cursor(conn) as cur:
+        cur.execute(
+            """SELECT r.receipt_no, r.issued_at, r.total_amount, r.verification_method, r.reconciliation_id,
+                      p.property_code, c.full_name AS citizen_name
+               FROM receipts r JOIN properties p ON p.id = r.property_id JOIN citizens c ON c.id = p.citizen_id
+               WHERE r.collector_id = %s AND (r.issued_at >= date_trunc('day', NOW()) OR r.reconciliation_id IS NULL)
+               ORDER BY r.issued_at DESC""",
+            (user["id"],),
+        )
+        rows = cur.fetchall()
+    return [{
+        "receipt_no": r["receipt_no"], "issued_at": r["issued_at"].isoformat(), "total_amount": float(r["total_amount"]),
+        "verification_method": r["verification_method"], "handed_over": r["reconciliation_id"] is not None,
+        "property_code": r["property_code"], "citizen_name": r["citizen_name"],
+    } for r in rows]
+
+
+class SosIn(BaseModel):
+    lat: float | None = None
+    lng: float | None = None
+    gps_accuracy_m: float | None = None
+    note: str | None = Field(None, max_length=500)
+
+
+@router.post("/sos")
+def send_sos(body: SosIn, user: dict = Depends(require_roles("collector", "supervisor"))):
+    """Panic button. Does not block on GPS: a location is attached when available."""
+    with get_conn() as conn, dict_cursor(conn) as cur:
+        cur.execute(
+            """INSERT INTO sos_alerts (employee_id, lat, lng, gps_accuracy_m, note) VALUES (%s,%s,%s,%s,%s)
+               RETURNING id, created_at""",
+            (user["id"], body.lat, body.lng, body.gps_accuracy_m, body.note),
+        )
+        a = cur.fetchone()
+        audit.log(cur, user["id"], "sos", "employee", user["employee_code"],
+                  {"alert_id": a["id"], "lat": body.lat, "lng": body.lng})
+    print(f"\n!!! SOS from {user['employee_code']} at {body.lat},{body.lng} ({body.note or ''}) !!!\n")
+    return {"alert_id": a["id"], "created_at": a["created_at"].isoformat()}

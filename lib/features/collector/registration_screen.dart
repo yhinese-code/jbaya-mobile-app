@@ -8,7 +8,8 @@ import 'widgets/otp_panel.dart';
 
 /// Flow A: citizen details + real GPS -> server sends OTP to the citizen's WhatsApp -> verify -> first-visit collection.
 class RegistrationScreen extends StatefulWidget {
-  const RegistrationScreen({super.key});
+  final VoidCallback? onCollected;
+  const RegistrationScreen({super.key, this.onCollected});
 
   @override
   State<RegistrationScreen> createState() => _RegistrationScreenState();
@@ -48,9 +49,9 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     });
     try {
       final fix = await LocationService.current();
-      setState(() => _gps = fix);
+      if (mounted) setState(() => _gps = fix);
     } catch (e) {
-      setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
+      if (mounted) setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
     } finally {
       if (mounted) setState(() => _gettingGps = false);
     }
@@ -82,12 +83,13 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
         'meter_status': _meterStatus,
         'meter_serial': _serialController.text.trim().isEmpty ? null : _serialController.text.trim(),
       });
+      if (!mounted) return;
       setState(() {
         _registration = Map<String, dynamic>.from(res as Map);
         _step = 2;
       });
     } on ApiException catch (e) {
-      setState(() => _error = e.message);
+      if (mounted) setState(() => _error = e.message);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -99,6 +101,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
       'use_master_code': useMaster,
       'reason': reason,
     });
+    if (!mounted) return;
     setState(() {
       _verified = Map<String, dynamic>.from(res as Map);
       _step = 3;
@@ -122,6 +125,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
       'open_bill_id': null,
     };
     await Navigator.of(context).push(MaterialPageRoute(builder: (_) => CollectionScreen(property: property)));
+    widget.onCollected?.call();
     if (mounted) _reset();
   }
 

@@ -94,6 +94,7 @@ class _OtpPanelState extends State<OtpPanel> {
     });
     try {
       final cooldown = await widget.onResend();
+      if (!mounted) return;
       _codeController.clear();
       _startCooldown(cooldown ?? widget.resendAfterSeconds);
       if (mounted) {

@@ -72,11 +72,14 @@ def overview(user: dict = Depends(command_or_admin)):
                  (SELECT COUNT(*) FROM bills WHERE status IN ('pending_approval','blocked_review')) AS bills_in_review,
                  (SELECT COALESCE(SUM(total_amount),0) FROM receipts WHERE reconciliation_id IS NULL) AS cash_in_transit,
                  (SELECT COUNT(*) FROM properties WHERE status = 'active') AS active_properties,
-                 (SELECT COUNT(*) FROM audit_log WHERE action IN ('otp_failed','master_code_failed','geofence_violation','employee_phone_blocked')
+                 (SELECT COUNT(*) FROM sos_alerts WHERE status = 'open') AS open_sos,
+                 (SELECT COUNT(*) FROM reconciliations WHERE resolution_status = 'escalated') AS escalations,
+                 (SELECT COALESCE(SUM(amount),0) FROM bank_deposits WHERE status = 'pending') AS deposits_pending_verification,
+                 (SELECT COUNT(*) FROM audit_log WHERE action IN ('otp_failed','master_code_failed','geofence_violation','employee_phone_blocked','cash_cap_blocked')
                      AND created_at >= date_trunc('day', NOW())) AS security_events_today"""
         )
         r = cur.fetchone()
-    return {k: (float(v) if k in ("collected_today", "cash_in_transit") else v) for k, v in r.items()}
+    return {k: (float(v) if k in ("collected_today", "cash_in_transit", "deposits_pending_verification") else v) for k, v in r.items()}
 
 
 @router.get("/receipts")
