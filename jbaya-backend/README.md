@@ -86,6 +86,29 @@ every 30 s (batched when offline). The server records `geofence_exit`, `mock_loc
 `/command/sectors`, `/command/leaderboard?days=`, `/command/health`, `/command/messages` (send/list);
 field inbox: `/messages/inbox`, `/messages/{id}/read`.
 
+## Phase 3 additions (HR)
+
+**Self-service (every employee, "خدماتي" button):** `/me/profile`, `/me/attendance/check-in|check-out` (selfie + GPS;
+fake GPS is refused, late and outside-sector are flagged), `/me/leave` (balances, request, cancel), `/me/payslips`
+(only after finance approves), `/me/expenses` (receipt photo required), `/me/custody`, `/me/appraisals`, `/me/training`.
+
+**Approval chains:** leave goes supervisor → HR (straight to HR when the employee has no supervisor). Expenses are
+approved by HR or finance and paid with the next salary. Payroll is computed by HR (draft, can be recomputed) and
+approved then marked paid by **finance only**.
+
+**Payroll formula:** base + allowances + commission (`COMMISSION_PER_RECEIPT_IQD` per OTP-confirmed receipt) +
+approved expenses − absent days − unpaid leave − cash shortages resolved as salary deduction − penalties − tax% − social security%.
+Working days exclude `WEEKEND_DAYS`.
+
+**Appraisal:** automatic monthly score (collection vs target, attendance, punctuality, cash accuracy, security events,
+warnings); final = auto × 0.7 + supervisor stars × 20 × 0.3.
+
+**HR portal (`/hr/...`):** dashboard, employee files and documents, daily attendance with selfies, leave queue,
+payroll runs, expenses, appraisals, custody (lost item can be charged to salary), discipline (suspension deactivates
+the account; `WARNINGS_BEFORE_SUSPENSION` written warnings in 12 months recommends suspension), recruitment
+(opening → applicants → one-click hire creates the account), training (mandatory courses auto-assigned by role).
+Termination is blocked while the employee holds custody items or unreconciled cash.
+
 ## WhatsApp templates to create in Meta Business Manager
 
 Meta only allows business-initiated messages through approved templates, and codes must use an

@@ -65,6 +65,19 @@ class Settings:
 
     # --- Phase 2: live tracking & Command security ---
     APP_TIMEZONE = _str("APP_TIMEZONE", "Asia/Baghdad")
+
+    # --- Phase 3: HR ---
+    SHIFT_START = _str("SHIFT_START", "08:00")                  # local time; later check-in counts as late
+    LATE_GRACE_MINUTES = _int("LATE_GRACE_MINUTES", 15)
+    WEEKEND_DAYS = [int(x) for x in _str("WEEKEND_DAYS", "4").split(",") if x.strip()]   # Python weekday: Mon=0 ... Fri=4
+    REQUIRE_SELFIE = _str("REQUIRE_SELFIE", "true").lower() == "true"
+    LEAVE_ANNUAL_DAYS = _int("LEAVE_ANNUAL_DAYS", 20)           # per calendar year
+    LEAVE_SICK_DAYS = _int("LEAVE_SICK_DAYS", 15)
+    LEAVE_EMERGENCY_DAYS = _int("LEAVE_EMERGENCY_DAYS", 5)
+    COMMISSION_PER_RECEIPT_IQD = _float("COMMISSION_PER_RECEIPT_IQD", 500)   # only for receipts confirmed by the citizen's OTP
+    INCOME_TAX_PCT = _float("INCOME_TAX_PCT", 0)                # confirm current Iraqi rates before go-live
+    SOCIAL_SECURITY_PCT = _float("SOCIAL_SECURITY_PCT", 0)      # employee share, confirm before go-live
+    WARNINGS_BEFORE_SUSPENSION = _int("WARNINGS_BEFORE_SUSPENSION", 3)
     PING_ONLINE_SECONDS = _int("PING_ONLINE_SECONDS", 300)        # online if a ping arrived within 5 min
     MAX_PLAUSIBLE_SPEED_MPS = _float("MAX_PLAUSIBLE_SPEED_MPS", 41.7)  # 150 km/h between two fixes = suspicious
     MAX_PINGS_PER_REQUEST = _int("MAX_PINGS_PER_REQUEST", 120)

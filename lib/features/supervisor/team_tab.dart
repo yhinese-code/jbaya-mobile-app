@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/format.dart';
+import '../shared/ui.dart';
 
 /// Team activity today. Deliberately shows counts only (no money) so the cash reconciliation stays blind.
 class TeamTab extends StatefulWidget {
@@ -92,6 +94,14 @@ class _TeamTabState extends State<TeamTab> {
                     spacing: 6,
                     runSpacing: 6,
                     children: [
+                      if (t['on_leave'] == true)
+                        const StatusChip('في إجازة', Colors.blue)
+                      else if (t['checked_in_at'] != null)
+                        StatusChip(
+                            'حضور ${formatTime(t['checked_in_at'])}${(t['late_minutes'] as num? ?? 0) > 0 ? ' (تأخير ${t['late_minutes']} د)' : ''}',
+                            (t['late_minutes'] as num? ?? 0) > 0 ? Colors.orange : Colors.green)
+                      else
+                        const StatusChip('لم يسجل الحضور', Colors.red),
                       _chip('وصولات اليوم', t['receipts_today'], Colors.green),
                       _chip('تسجيلات اليوم', t['registrations_today'], Colors.blue),
                       _chip('بانتظار التسليم', t['open_receipts'], Colors.teal),

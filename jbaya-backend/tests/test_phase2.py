@@ -161,3 +161,14 @@ def test_admin_updates_phone(client):
 
 def test_audit_chain_valid(client):
     assert client.get("/command/audit/verify", headers=login(client, "CMD-01")).json()["valid"] is True
+
+
+def test_property_detail(client):
+    cmd = login(client, "CMD-01")
+    props = client.get("/command/properties", headers=cmd).json()
+    code = props[0]["property_code"]
+    assert props[0]["citizen_name"]
+    d = client.get(f"/command/properties/{code}", headers=cmd).json()
+    assert d["property_code"] == code and d["phone_masked"].startswith("+964") and d["bills"]
+    assert d["registered_by"].startswith("JB-0492")
+    assert client.get("/command/properties/NOPE-1", headers=cmd).status_code == 404

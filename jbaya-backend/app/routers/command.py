@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 from .. import audit, codes, files
 from ..config import settings
-from ..utils import haversine_m
+from ..utils import haversine_m, mask_phone
 from ..db import dict_cursor, get_conn
 from ..security import current_user, require_roles
 
@@ -188,9 +188,9 @@ def properties_map(sector_code: str | None = None, limit: int = Query(3000, ge=1
     """Property dots for the map, coloured like the collector's route (red = due, yellow = soon, green = paid)."""
     with get_conn() as conn, dict_cursor(conn) as cur:
         cur.execute(
-            """SELECT p.property_code, p.lat, p.lng, p.property_class, s.code AS sector_code,
+            """SELECT p.property_code, p.lat, p.lng, p.property_class, s.code AS sector_code, c.full_name AS citizen_name,
                       (SELECT MAX(paid_at) FROM bills b WHERE b.property_id = p.id AND b.status = 'paid') AS last_paid
-               FROM properties p JOIN sectors s ON s.id = p.sector_id
+               FROM properties p JOIN sectors s ON s.id = p.sector_id JOIN citizens c ON c.id = p.citizen_id
                WHERE p.status = 'active' AND (%s::text IS NULL OR s.code = %s)
                LIMIT %s""",
             (sector_code, sector_code, limit),
@@ -202,7 +202,8 @@ def properties_map(sector_code: str | None = None, limit: int = Query(3000, ge=1
         days = None if r["last_paid"] is None else (now - r["last_paid"]).days
         color = "red" if days is None or days >= settings.ROUTE_DUE_DAYS else ("yellow" if days >= settings.ROUTE_WARNING_DAYS else "green")
         out.append({"property_code": r["property_code"], "lat": r["lat"], "lng": r["lng"],
-                    "property_class": r["property_class"], "sector_code": r["sector_code"], "status_color": color})
+                    "property_class": r["property_class"], "sector_code": r["sector_code"], "status_color": color,
+                    "citizen_name": r["citizen_name"]})
     return out
 
 
@@ -480,3 +481,59 @@ def sent_messages(user: dict = Depends(command_or_admin)):
     for r in rows:
         r["created_at"] = r["created_at"].isoformat()
     return rows
+
+
+@router.get("/properties/{property_code}")
+def property_detail(property_code: str, user: dict = Depends(command_or_admin)):
+    """Everything about one property for the map pop-up: citizen, meter, readings, bills, receipts."""
+    with get_conn() as conn, dict_cursor(conn) as cur:
+        cur.execute(
+            """SELECT p.*, c.full_name AS citizen_name, c.whatsapp_phone, c.phone_verified_at,
+                      s.code AS sector_code, s.name AS sector_name, e.employee_code AS registered_by_code,
+                      e.full_name AS registered_by_name
+               FROM properties p JOIN citizens c ON c.id = p.citizen_id JOIN sectors s ON s.id = p.sector_id
+               JOIN employees e ON e.id = p.registered_by
+               WHERE UPPER(p.property_code) = UPPER(%s)""",
+            (property_code,),
+        )
+        p = cur.fetchone()
+        if not p:
+            raise HTTPException(404, "العقار غير موجود")
+        cur.execute(
+            """SELECT b.id, b.status, b.visit_type, b.billing_method, b.previous_reading, b.current_reading, b.consumption,
+                      b.period_days, b.total_amount, b.flags, b.created_at, b.paid_at, b.photo_path IS NOT NULL AS has_photo,
+                      e.employee_code AS collector_code, r.receipt_no, r.verification_method
+               FROM bills b JOIN employees e ON e.id = b.collector_id LEFT JOIN receipts r ON r.bill_id = b.id
+               WHERE b.property_id = %s ORDER BY b.created_at DESC LIMIT 20""",
+            (p["id"],),
+        )
+        bills = cur.fetchall()
+        cur.execute("SELECT reading, reading_type, taken_at FROM meter_readings WHERE property_id = %s ORDER BY taken_at DESC LIMIT 1",
+                    (p["id"],))
+        last_reading = cur.fetchone()
+        cur.execute("SELECT COALESCE(SUM(total_amount),0) AS s, COUNT(*) AS n FROM receipts WHERE property_id = %s", (p["id"],))
+        totals = cur.fetchone()
+    paid = [b for b in bills if b["status"] == "paid"]
+    last_paid = paid[0]["paid_at"] if paid else None
+    days = None if last_paid is None else (datetime.now(timezone.utc) - last_paid).days
+    color = "red" if days is None or days >= settings.ROUTE_DUE_DAYS else ("yellow" if days >= settings.ROUTE_WARNING_DAYS else "green")
+    num = lambda v: float(v) if v is not None else None  # noqa: E731
+    return {
+        "property_code": p["property_code"], "status": p["status"], "status_color": color, "days_since_paid": days,
+        "address": p["address"], "property_class": p["property_class"], "lat": p["lat"], "lng": p["lng"],
+        "gps_accuracy_m": p["gps_accuracy_m"], "meter_status": p["meter_status"], "meter_serial": p["meter_serial"],
+        "flags": p["flags"], "sector_code": p["sector_code"], "sector_name": p["sector_name"],
+        "citizen_name": p["citizen_name"], "phone_masked": mask_phone(p["whatsapp_phone"]),
+        "phone_verified": p["phone_verified_at"] is not None,
+        "registered_by": f"{p['registered_by_code']} - {p['registered_by_name']}", "registered_at": _iso(p["registered_at"]),
+        "last_reading": num(last_reading["reading"]) if last_reading else None,
+        "last_reading_at": _iso(last_reading["taken_at"]) if last_reading else None,
+        "total_paid": float(totals["s"]), "receipts_count": totals["n"],
+        "bills": [{
+            "id": b["id"], "status": b["status"], "visit_type": b["visit_type"], "billing_method": b["billing_method"],
+            "previous_reading": num(b["previous_reading"]), "current_reading": num(b["current_reading"]),
+            "consumption": num(b["consumption"]), "period_days": b["period_days"], "total_amount": float(b["total_amount"]),
+            "flags": b["flags"], "created_at": _iso(b["created_at"]), "paid_at": _iso(b["paid_at"]), "has_photo": b["has_photo"],
+            "collector_code": b["collector_code"], "receipt_no": b["receipt_no"], "verification_method": b["verification_method"],
+        } for b in bills],
+    }

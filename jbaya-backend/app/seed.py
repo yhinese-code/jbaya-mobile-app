@@ -59,6 +59,14 @@ def run():
         # In WHATSAPP_MODE=console the code is printed in the server terminal. Change to real numbers before going live.
         for code, phone in (("CMD-01", "9647700000001"), ("ADMIN-01", "9647700000002")):
             cur.execute("UPDATE employees SET phone = %s WHERE employee_code = %s AND phone IS NULL", (phone, code))
+        # demo HR data (only fills empty values, never overwrites what HR entered)
+        for role, salary in (("collector", 600000), ("supervisor", 900000), ("finance", 1000000), ("hr", 1000000), ("command", 1200000)):
+            cur.execute(
+                """UPDATE employees SET base_salary = %s, allowance_transport = 50000, hire_date = COALESCE(hire_date, DATE '2026-01-01')
+                   WHERE role = %s AND base_salary = 0""",
+                (salary, role),
+            )
+        cur.execute("UPDATE employees SET allowance_risk = 25000 WHERE role = 'collector' AND allowance_risk = 0")
     print("Seed complete. Demo accounts (password: %s):" % password)
     for code, name, role, *_ in ACCOUNTS:
         print(f"  {code:10} {role}")

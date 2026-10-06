@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../core/session.dart';
 import '../collector/widgets/sos_button.dart';
+import '../hr/hr_tabs.dart';
+import '../self_service/self_service_screen.dart' show SelfServiceButton;
 import '../shared/alerts_tab.dart';
 import '../shared/inbox_button.dart';
 import 'deposits_tab.dart';
@@ -16,13 +18,13 @@ class SupervisorScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 5,
+      length: 8,
       child: Scaffold(
         appBar: AppBar(
           title: Text('بوابة المشرف - ${Session.instance.fullName}', style: const TextStyle(fontWeight: FontWeight.bold)),
           backgroundColor: Colors.orange.shade800,
           foregroundColor: Colors.white,
-          actions: const [SosButton(), InboxButton(), LogoutButton()],
+          actions: const [SosButton(), InboxButton(), SelfServiceButton(), LogoutButton()],
           bottom: const TabBar(
             isScrollable: true,
             tabAlignment: TabAlignment.start,
@@ -35,11 +37,14 @@ class SupervisorScreen extends StatelessWidget {
               Tab(icon: Icon(Icons.rule), text: 'مراجعة الفواتير'),
               Tab(icon: Icon(Icons.account_balance), text: 'الإيداع المصرفي'),
               Tab(icon: Icon(Icons.sos), text: 'الاستغاثات'),
+              Tab(icon: Icon(Icons.fingerprint), text: 'حضور الفريق'),
+              Tab(icon: Icon(Icons.beach_access), text: 'طلبات الإجازة'),
+              Tab(icon: Icon(Icons.star), text: 'تقييم الفريق'),
             ],
           ),
         ),
         body: const TabBarView(
-          children: [TeamTab(), ReconciliationTab(), ReviewsTab(), DepositsTab(), AlertsTab()],
+          children: [TeamTab(), ReconciliationTab(), ReviewsTab(), DepositsTab(), AlertsTab(), AttendanceDayTab(), LeaveApprovalsTab(), AppraisalsTab()],
         ),
       ),
     );

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../core/session.dart';
+import '../hr/hr_tabs.dart';
+import '../self_service/self_service_screen.dart' show SelfServiceButton;
 import 'deposits_verification_tab.dart';
 
 // Finance portal: still demo numbers. Real ledger, charts and analytics arrive in Phase 4.
@@ -10,24 +12,28 @@ class FinancialPortalScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 2,
+      length: 4,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('البوابة المالية المركزية (إيرادات وتحصيلات)', style: TextStyle(fontWeight: FontWeight.bold)),
           backgroundColor: Colors.green.shade800,
           foregroundColor: Colors.white,
-          actions: const [LogoutButton()],
+          actions: const [SelfServiceButton(), LogoutButton()],
           bottom: const TabBar(
+            isScrollable: true,
+            tabAlignment: TabAlignment.start,
             labelColor: Colors.white,
             unselectedLabelColor: Colors.white70,
             indicatorColor: Colors.white,
             tabs: [
               Tab(icon: Icon(Icons.account_balance), text: 'تدقيق الإيداعات'),
+              Tab(icon: Icon(Icons.payments), text: 'الرواتب'),
+              Tab(icon: Icon(Icons.receipt_long), text: 'مصاريف الموظفين'),
               Tab(icon: Icon(Icons.summarize), text: 'الملخص (تجريبي)'),
             ],
           ),
         ),
-        body: const TabBarView(children: [DepositsVerificationTab(), _FinanceSummaryDemo()]),
+        body: const TabBarView(children: [DepositsVerificationTab(), PayrollTab(), ExpenseApprovalsTab(), _FinanceSummaryDemo()]),
       ),
     );
   }

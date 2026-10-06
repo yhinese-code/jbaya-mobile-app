@@ -298,3 +298,192 @@ CREATE TABLE IF NOT EXISTS message_reads (
     read_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY (message_id, employee_id)
 );
+
+-- ---------------------------------------------------------------
+-- Phase 3: HR
+
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS job_title TEXT;
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS department TEXT;
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS hire_date DATE;
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS contract_end DATE;
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS national_id_no VARCHAR(40);
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS birth_date DATE;
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS home_address TEXT;
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS emergency_contact TEXT;
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS base_salary NUMERIC(14,2) NOT NULL DEFAULT 0;
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS allowance_transport NUMERIC(14,2) NOT NULL DEFAULT 0;
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS allowance_phone NUMERIC(14,2) NOT NULL DEFAULT 0;
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS allowance_risk NUMERIC(14,2) NOT NULL DEFAULT 0;
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS payment_method TEXT;          -- e.g. 'نقداً', 'كي كارد 1234'
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS hr_notes TEXT;
+
+CREATE TABLE IF NOT EXISTS employee_documents (
+    id              SERIAL PRIMARY KEY,
+    employee_id     INT NOT NULL REFERENCES employees(id),
+    doc_type        VARCHAR(30) NOT NULL,     -- national_id, contract, guarantee, certificate, other
+    title           TEXT NOT NULL,
+    file_path       TEXT,
+    expires_on      DATE,
+    uploaded_by     INT REFERENCES employees(id),
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS attendance (
+    id                  SERIAL PRIMARY KEY,
+    employee_id         INT NOT NULL REFERENCES employees(id),
+    work_date           DATE NOT NULL,
+    check_in_at         TIMESTAMPTZ NOT NULL,
+    check_in_lat        DOUBLE PRECISION,
+    check_in_lng        DOUBLE PRECISION,
+    check_in_photo      TEXT,
+    check_in_inside     BOOLEAN,
+    late_minutes        INT NOT NULL DEFAULT 0,
+    check_out_at        TIMESTAMPTZ,
+    check_out_lat       DOUBLE PRECISION,
+    check_out_lng       DOUBLE PRECISION,
+    check_out_photo     TEXT,
+    worked_minutes      INT,
+    flags               JSONB NOT NULL DEFAULT '[]'::jsonb,
+    UNIQUE (employee_id, work_date)
+);
+
+CREATE TABLE IF NOT EXISTS leave_requests (
+    id                  SERIAL PRIMARY KEY,
+    employee_id         INT NOT NULL REFERENCES employees(id),
+    leave_type          VARCHAR(20) NOT NULL CHECK (leave_type IN ('annual','sick','emergency','unpaid')),
+    start_date          DATE NOT NULL,
+    end_date            DATE NOT NULL,
+    days                INT NOT NULL,
+    reason              TEXT,
+    attachment_path     TEXT,
+    status              VARCHAR(20) NOT NULL CHECK (status IN ('pending_supervisor','pending_hr','approved','rejected','cancelled')),
+    supervisor_id       INT REFERENCES employees(id),
+    supervisor_at       TIMESTAMPTZ,
+    hr_id               INT REFERENCES employees(id),
+    hr_at               TIMESTAMPTZ,
+    decision_note       TEXT,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_leave_employee ON leave_requests(employee_id, start_date);
+
+CREATE TABLE IF NOT EXISTS expense_claims (
+    id                  SERIAL PRIMARY KEY,
+    employee_id         INT NOT NULL REFERENCES employees(id),
+    category            VARCHAR(20) NOT NULL CHECK (category IN ('fuel','phone','transport','repair','other')),
+    amount              NUMERIC(14,2) NOT NULL CHECK (amount > 0),
+    expense_date        DATE NOT NULL,
+    description         TEXT,
+    receipt_path        TEXT,
+    status              VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','rejected','paid')),
+    decided_by          INT REFERENCES employees(id),
+    decided_at          TIMESTAMPTZ,
+    decision_note       TEXT,
+    payslip_id          INT,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS payroll_runs (
+    id                  SERIAL PRIMARY KEY,
+    period              CHAR(7) UNIQUE NOT NULL,          -- 'YYYY-MM'
+    status              VARCHAR(20) NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','approved','paid')),
+    totals              JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_by          INT REFERENCES employees(id),
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    approved_by         INT REFERENCES employees(id),
+    approved_at         TIMESTAMPTZ,
+    paid_by             INT REFERENCES employees(id),
+    paid_at             TIMESTAMPTZ
+);
+
+CREATE TABLE IF NOT EXISTS payslips (
+    id                  SERIAL PRIMARY KEY,
+    run_id              INT NOT NULL REFERENCES payroll_runs(id),
+    employee_id         INT NOT NULL REFERENCES employees(id),
+    gross               NUMERIC(14,2) NOT NULL,
+    deductions          NUMERIC(14,2) NOT NULL,
+    net                 NUMERIC(14,2) NOT NULL,
+    lines               JSONB NOT NULL,                   -- [{kind: earning/deduction, code, label, amount, detail}]
+    stats               JSONB NOT NULL DEFAULT '{}'::jsonb,
+    UNIQUE (run_id, employee_id)
+);
+
+CREATE TABLE IF NOT EXISTS appraisals (
+    id                  SERIAL PRIMARY KEY,
+    employee_id         INT NOT NULL REFERENCES employees(id),
+    period              CHAR(7) NOT NULL,
+    metrics             JSONB NOT NULL,
+    auto_score          NUMERIC(5,1) NOT NULL,
+    supervisor_rating   INT CHECK (supervisor_rating BETWEEN 1 AND 5),
+    supervisor_note     TEXT,
+    final_score         NUMERIC(5,1) NOT NULL,
+    recommendation      TEXT NOT NULL,
+    rated_by            INT REFERENCES employees(id),
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (employee_id, period)
+);
+
+CREATE TABLE IF NOT EXISTS custody_items (
+    id                  SERIAL PRIMARY KEY,
+    employee_id         INT NOT NULL REFERENCES employees(id),
+    item_type           VARCHAR(20) NOT NULL CHECK (item_type IN ('phone','meter_reader','printer','vehicle','uniform','cash_bag','other')),
+    description         TEXT NOT NULL,
+    serial_no           VARCHAR(80),
+    value_iqd           NUMERIC(14,2) NOT NULL DEFAULT 0,
+    status              VARCHAR(20) NOT NULL DEFAULT 'assigned' CHECK (status IN ('assigned','returned','lost')),
+    assigned_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    assigned_by         INT REFERENCES employees(id),
+    returned_at         TIMESTAMPTZ,
+    return_note         TEXT
+);
+
+CREATE TABLE IF NOT EXISTS disciplinary_actions (
+    id                  SERIAL PRIMARY KEY,
+    employee_id         INT NOT NULL REFERENCES employees(id),
+    action_type         VARCHAR(20) NOT NULL CHECK (action_type IN ('verbal_warning','written_warning','final_warning','penalty','suspension')),
+    reason              TEXT NOT NULL,
+    penalty_iqd         NUMERIC(14,2) NOT NULL DEFAULT 0,
+    effective_date      DATE NOT NULL,
+    issued_by           INT REFERENCES employees(id),
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS job_openings (
+    id                  SERIAL PRIMARY KEY,
+    title               TEXT NOT NULL,
+    role                VARCHAR(20) NOT NULL DEFAULT 'collector',
+    sector_code         VARCHAR(30),
+    positions           INT NOT NULL DEFAULT 1,
+    description         TEXT,
+    status              VARCHAR(20) NOT NULL DEFAULT 'open' CHECK (status IN ('open','closed')),
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS applicants (
+    id                  SERIAL PRIMARY KEY,
+    opening_id          INT NOT NULL REFERENCES job_openings(id),
+    full_name           TEXT NOT NULL,
+    phone               VARCHAR(20),
+    notes               TEXT,
+    stage               VARCHAR(20) NOT NULL DEFAULT 'applied' CHECK (stage IN ('applied','interview','test','offer','hired','rejected')),
+    score               INT,
+    hired_employee_id   INT REFERENCES employees(id),
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS training_courses (
+    id                  SERIAL PRIMARY KEY,
+    title               TEXT NOT NULL,
+    description         TEXT,
+    mandatory_for       VARCHAR(20),            -- role that must complete it (e.g. collector), NULL = optional
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS training_records (
+    id                  SERIAL PRIMARY KEY,
+    course_id           INT NOT NULL REFERENCES training_courses(id),
+    employee_id         INT NOT NULL REFERENCES employees(id),
+    status              VARCHAR(20) NOT NULL DEFAULT 'assigned' CHECK (status IN ('assigned','completed')),
+    score               INT,
+    completed_at        TIMESTAMPTZ,
+    UNIQUE (course_id, employee_id)
+);

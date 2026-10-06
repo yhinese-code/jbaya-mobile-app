@@ -16,9 +16,10 @@ class CapturedPhoto {
 class PhotoService {
   static final ImagePicker _picker = ImagePicker();
 
-  static Future<CapturedPhoto?> capture({bool runOcr = false}) async {
+  static Future<CapturedPhoto?> capture({bool runOcr = false, bool front = false}) async {
     final XFile? file = await _picker.pickImage(
       source: ImageSource.camera,
+      preferredCameraDevice: front ? CameraDevice.front : CameraDevice.rear,
       maxWidth: 1600,
       maxHeight: 1600,
       imageQuality: 70,

@@ -289,15 +289,22 @@ def team(user: dict = Depends(supervisor_only)):
                        (SELECT COUNT(*) FROM master_code_uses m WHERE m.collector_id = e.id AND m.used_at >= date_trunc('day', NOW())) AS master_uses_today,
                        (SELECT COUNT(*) FROM bills b WHERE b.collector_id = e.id AND b.status IN ('pending_approval','blocked_review')) AS bills_in_review,
                        (SELECT COUNT(*) FROM sos_alerts a WHERE a.employee_id = e.id AND a.status = 'open') AS open_sos,
-                       (SELECT MAX(created_at) FROM audit_log l WHERE l.actor_id = e.id) AS last_activity
+                       (SELECT MAX(created_at) FROM audit_log l WHERE l.actor_id = e.id) AS last_activity,
+                       (SELECT check_in_at FROM attendance a WHERE a.employee_id = e.id
+                           AND a.work_date = (NOW() AT TIME ZONE %(tz)s)::date) AS checked_in_at,
+                       (SELECT late_minutes FROM attendance a WHERE a.employee_id = e.id
+                           AND a.work_date = (NOW() AT TIME ZONE %(tz)s)::date) AS late_minutes,
+                       EXISTS (SELECT 1 FROM leave_requests lr WHERE lr.employee_id = e.id AND lr.status = 'approved'
+                           AND (NOW() AT TIME ZONE %(tz)s)::date BETWEEN lr.start_date AND lr.end_date) AS on_leave
                 FROM employees e LEFT JOIN sectors s ON s.id = e.sector_id
-                WHERE e.role = 'collector' AND e.active AND {cond}
+                WHERE e.role = 'collector' AND e.active AND {cond.replace("%s", "%(me)s")}
                 ORDER BY e.employee_code""",
-            args,
+            {"tz": settings.APP_TIMEZONE, "me": args[0] if args else None},
         )
         rows = cur.fetchall()
     for r in rows:
         r["last_activity"] = r["last_activity"].isoformat() if r["last_activity"] else None
+        r["checked_in_at"] = r["checked_in_at"].isoformat() if r["checked_in_at"] else None
     return rows
 
 

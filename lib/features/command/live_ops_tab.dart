@@ -7,6 +7,7 @@ import 'package:latlong2/latlong.dart';
 import '../../core/api_client.dart';
 import '../../core/format.dart';
 import 'cc_widgets.dart';
+import 'property_dialog.dart';
 
 /// The video wall: KPI strip, live map (sectors, properties, staff), field-force list and the live event feed.
 /// Staff and KPIs refresh every 10 s, the feed every 5 s, property dots every 60 s.
@@ -34,6 +35,8 @@ class _LiveOpsTabState extends State<LiveOpsTab> {
   String? _error;
   DateTime? _updatedAt;
   final Set<int> _flashIds = {};
+  bool _fittedOnce = false;
+  final _propertySearch = TextEditingController();
 
   Timer? _fast;
   Timer? _feedTimer;
@@ -56,6 +59,7 @@ class _LiveOpsTabState extends State<LiveOpsTab> {
     _feedTimer?.cancel();
     _slow?.cancel();
     _map.dispose();
+    _propertySearch.dispose();
     super.dispose();
   }
 
@@ -88,7 +92,42 @@ class _LiveOpsTabState extends State<LiveOpsTab> {
         _sectors = (res[0] as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
         _properties = (res[1] as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
       });
+      if (!_fittedOnce) _fitAll();
     } on ApiException catch (_) {}
+  }
+
+  /// Zoom the map so every sector, property and field employee is visible.
+  void _fitAll() {
+    if (!_mapReady) return;
+    final pts = <LatLng>[
+      for (final s in _sectors) ...polygonPoints(s['polygon']),
+      for (final p in _properties)
+        if (p['lat'] != null) LatLng((asNum(p['lat']) ?? 0).toDouble(), (asNum(p['lng']) ?? 0).toDouble()),
+      for (final s in _staff)
+        if (s['lat'] != null) LatLng((asNum(s['lat']) ?? 0).toDouble(), (asNum(s['lng']) ?? 0).toDouble()),
+    ];
+    if (pts.isEmpty) return;
+    _fittedOnce = true;
+    if (pts.length == 1) {
+      _map.move(pts.first, 16);
+      return;
+    }
+    _map.fitCamera(CameraFit.bounds(bounds: LatLngBounds.fromPoints(pts), padding: const EdgeInsets.all(48), maxZoom: 17));
+  }
+
+  void _searchProperty(String q) {
+    final query = q.trim().toUpperCase();
+    if (query.isEmpty) return;
+    final hit = _properties.firstWhere(
+      (p) => '${p['property_code']}'.toUpperCase().contains(query) || '${p['citizen_name'] ?? ''}'.contains(q.trim()),
+      orElse: () => <String, dynamic>{},
+    );
+    if (hit.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('لم يتم العثور على العقار')));
+      return;
+    }
+    _focus(hit['lat'], hit['lng'], zoom: 18);
+    showPropertyDialog(context, hit['property_code'] as String);
   }
 
   Future<void> _loadFeed() async {
@@ -257,6 +296,27 @@ class _LiveOpsTabState extends State<LiveOpsTab> {
           Text('آخر تحديث ${_updatedAt!.hour.toString().padLeft(2, '0')}:${_updatedAt!.minute.toString().padLeft(2, '0')}:${_updatedAt!.second.toString().padLeft(2, '0')}',
               style: const TextStyle(color: CC.muted, fontSize: 11)),
         const SizedBox(width: 8),
+        SizedBox(
+          width: 190,
+          height: 32,
+          child: TextField(
+            controller: _propertySearch,
+            onSubmitted: _searchProperty,
+            style: const TextStyle(fontSize: 12),
+            decoration: const InputDecoration(
+              isDense: true,
+              contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              prefixIcon: Icon(Icons.search, size: 16),
+              hintText: 'بحث عن عقار',
+              border: OutlineInputBorder(),
+            ),
+          ),
+        ),
+        IconButton(
+          tooltip: 'إظهار الكل',
+          onPressed: _fitAll,
+          icon: const Icon(Icons.fit_screen, size: 20),
+        ),
         FilterChip(
           label: const Text('العقارات', style: TextStyle(fontSize: 12)),
           selected: _showProperties,
@@ -272,18 +332,34 @@ class _LiveOpsTabState extends State<LiveOpsTab> {
             initialCenter: const LatLng(33.3152, 44.3661),
             initialZoom: 13,
             maxZoom: 19,
-            onMapReady: () => _mapReady = true,
+            onMapReady: () {
+              _mapReady = true;
+              _fitAll();
+            },
           ),
           children: [
             darkTiles(),
             PolygonLayer(polygons: polygons),
             if (_showProperties)
-              CircleLayer(circles: [
+              MarkerLayer(markers: [
                 for (final p in _properties)
-                  CircleMarker(
+                  Marker(
                     point: LatLng((asNum(p['lat']) ?? 0).toDouble(), (asNum(p['lng']) ?? 0).toDouble()),
-                    radius: 4,
-                    color: CC.propertyColor(p['status_color'] as String?).withValues(alpha: 0.85),
+                    width: 16,
+                    height: 16,
+                    child: GestureDetector(
+                      onTap: () => showPropertyDialog(context, p['property_code'] as String),
+                      child: Tooltip(
+                        message: '${p['property_code']} - ${p['citizen_name'] ?? ''}',
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: CC.propertyColor(p['status_color'] as String?),
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white.withValues(alpha: 0.8), width: 1.5),
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
               ]),
             MarkerLayer(markers: [

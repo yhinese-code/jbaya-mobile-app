@@ -5,6 +5,7 @@ import '../../core/session.dart';
 import '../collector/collector_home.dart';
 import '../command/command_screen.dart';
 import '../finance/finance_portal_screen.dart';
+import '../hr/hr_portal_screen.dart';
 import '../supervisor/supervisor_screen.dart';
 
 /// One login for every role. The server decides the role and (for collectors) the sector.
@@ -111,12 +112,15 @@ class _LoginScreenState extends State<LoginScreen> {
       case 'finance':
         next = const FinancialPortalScreen();
         break;
+      case 'hr':
+        next = const HrPortalScreen();
+        break;
       case 'command':
       case 'admin':
         next = const CentralCommandScreen();
         break;
       default:
-        setState(() => _error = 'بوابة هذا الدور قيد التطوير (الموارد البشرية - المرحلة 3)');
+        setState(() => _error = 'لا توجد بوابة لهذا الدور');
         return;
     }
     Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => next));
