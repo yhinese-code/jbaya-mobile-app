@@ -11,8 +11,9 @@ def test_demo_history_and_detectors(client, monkeypatch):
     demo_finance.main()
     demo_finance.main()                     # second run is a no-op
     fn = login(client, "FN-01")
-    tb = client.get("/finance/trial-balance", headers=fn).json()
-    assert tb["balanced"] and tb["cash"]["bank"] > 0 and tb["cash"]["employee_receivables"] > 0
+    tb = client.get("/finance/trial-balance", headers=login(client, "OWNER-01")).json()
+    assert tb["balanced"] and tb["cash"]["bank"] > 0 and tb["cash"]["employees_owe"] > 0
+    assert tb["cash"]["government_trust"] > 0                    # 90% was handed over; the last two weeks are still held
 
     risk = {c["employee_code"]: c for c in client.get("/finance/risk?days=90", headers=fn).json()["collectors"]}
     honest, shady = risk["JB-0492"], risk["JB-0493"]
@@ -31,3 +32,6 @@ def test_demo_history_and_detectors(client, monkeypatch):
 
     bf = client.get("/finance/benford?collector=JB-0493", headers=fn).json()
     assert bf["last_digit"]["suspicious"] is True
+
+    perf = {c["employee_code"]: c for c in client.get("/performance/collectors", headers=fn).json()["collectors"]}
+    assert set(perf) >= {"JB-0492", "JB-0493"} and all(c["breakeven_receipts_per_day"] for c in perf.values())

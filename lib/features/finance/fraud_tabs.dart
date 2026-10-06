@@ -170,8 +170,8 @@ class _AnomaliesTabState extends State<AnomaliesTab> {
     'rapid_receipts': 'وصولات متقاربة جداً',
     'far_from_property': 'بعيد عن العقار',
     'cash_held': 'احتفاظ بالنقد',
-    'deposit_delay': 'تأخير الإيداع',
-    'deposit_difference': 'فرق في الإيداع',
+    'handover_delay': 'تأخر التسليم للمقر',
+    'handover_difference': 'فرق عند العدّ في المقر',
     'master_share': 'الرمز الرئيسي',
     'estimate_share': 'تقديرات مرتفعة',
     'digit_preference': 'تفضيل الأرقام',
@@ -443,6 +443,23 @@ class FinancialRiskCommandTab extends StatelessWidget {
       child: Column(children: [
         TabBar(tabs: [Tab(text: 'درجات المخاطر'), Tab(text: 'الحالات الشاذة')]),
         Expanded(child: TabBarView(children: [RiskTab(), AnomaliesTab()])),
+      ]),
+    );
+  }
+}
+
+
+/// Finance / owner: the three fraud views under one tab.
+class FraudTab extends StatelessWidget {
+  const FraudTab({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const DefaultTabController(
+      length: 3,
+      child: Column(children: [
+        TabBar(tabs: [Tab(text: 'درجات المخاطر'), Tab(text: 'الحالات الشاذة'), Tab(text: 'تحليل الأرقام')]),
+        Expanded(child: TabBarView(children: [RiskTab(), AnomaliesTab(), BenfordTab()])),
       ]),
     );
   }

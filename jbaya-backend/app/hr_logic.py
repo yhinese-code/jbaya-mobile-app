@@ -166,7 +166,15 @@ def compute_payslip(cur, emp: dict, period: str) -> dict:
         {**bounds, "id": emp["id"]},
     )
     short = cur.fetchone()
-    deduct("cash_shortage", "عجز نقدي (مطابقة)", float(short["s"]), f"{short['n']} مطابقة")
+    cur.execute(
+        f"""SELECT COALESCE(SUM(ABS(difference)), 0) AS s, COUNT(*) AS n FROM cash_handovers
+            WHERE supervisor_id = %(id)s AND resolution_action = 'salary_deduction' AND resolution_status = 'resolved'
+              AND resolved_at >= {LO} AND resolved_at < {HI}""",
+        {**bounds, "id": emp["id"]},
+    )
+    hq = cur.fetchone()
+    deduct("cash_shortage", "نقص نقدي يُخصم من الراتب", float(short["s"]) + float(hq["s"]),
+           f"{short['n'] + hq['n']} تسليم فيه نقص")
 
     cur.execute(
         """SELECT COALESCE(SUM(penalty_iqd), 0) AS s, COUNT(*) AS n FROM disciplinary_actions

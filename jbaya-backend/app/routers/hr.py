@@ -5,7 +5,7 @@ import json
 from datetime import date
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from .. import audit, files, hr_logic
@@ -546,7 +546,7 @@ class RunIn(BaseModel):
 
 
 def _run_out(r: dict) -> dict:
-    return {"id": r["id"], "period": r["period"], "status": r["status"], "totals": r["totals"],
+    return {"id": r["id"], "period": r["period"], "status": r["status"], "totals": r["totals"], "paid_from": r.get("paid_from"),
             "created_at": _iso(r["created_at"]), "approved_at": _iso(r["approved_at"]), "paid_at": _iso(r["paid_at"])}
 
 
@@ -616,6 +616,7 @@ def run_detail(period: str, user: dict = Depends(hr_or_finance)):
 
 class RunActionIn(BaseModel):
     action: Literal["approve", "mark_paid"]
+    paid_from: Literal["cash", "bank"] = "bank"        # salaries handed out from the HQ cash box, or transferred
 
 
 @router.post("/hr/payroll/runs/{period}/action")
@@ -637,8 +638,8 @@ def run_action(period: str, body: RunActionIn, user: dict = Depends(hr_or_financ
         else:
             if run["status"] != "approved":
                 raise HTTPException(409, "يجب اعتماد الرواتب قبل الصرف")
-            cur.execute("UPDATE payroll_runs SET status = 'paid', paid_by = %s, paid_at = NOW() WHERE id = %s RETURNING *",
-                        (user["id"], run["id"]))
+            cur.execute("UPDATE payroll_runs SET status = 'paid', paid_by = %s, paid_at = NOW(), paid_from = %s WHERE id = %s RETURNING *",
+                        (user["id"], body.paid_from, run["id"]))
             run = cur.fetchone()
             cur.execute("UPDATE expense_claims SET status = 'paid' WHERE payslip_id IN (SELECT id FROM payslips WHERE run_id = %s)",
                         (run["id"],))

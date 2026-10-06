@@ -24,7 +24,7 @@ def daily_series(cur, start: date, end: date, collector_id: int | None = None) -
     """Collections per LOCAL day, zero-filled."""
     cur.execute(
         """SELECT d::date AS day, COALESCE(SUM(r.total_amount),0) AS total, COALESCE(SUM(r.gov_amount),0) AS gov,
-                  COALESCE(SUM(r.company_fee),0) AS fee, COUNT(r.id) AS n
+                  COALESCE(SUM(r.company_fee),0) AS fee, COALESCE(SUM(r.company_share),0) AS share, COUNT(r.id) AS n
            FROM generate_series(%(s)s::date, %(e)s::date, interval '1 day') AS d
            LEFT JOIN receipts r ON r.issued_at >= ((d::date)::timestamp AT TIME ZONE %(tz)s)
                                AND r.issued_at < ((d::date + 1)::timestamp AT TIME ZONE %(tz)s)
@@ -32,21 +32,23 @@ def daily_series(cur, start: date, end: date, collector_id: int | None = None) -
            GROUP BY d ORDER BY d""",
         _b(start, end, c=collector_id),
     )
-    return [{"day": r["day"].isoformat(), "total": _f(r["total"]), "gov": _f(r["gov"]), "fee": _f(r["fee"]), "count": r["n"]}
+    return [{"day": r["day"].isoformat(), "total": _f(r["total"]), "gov": _f(r["gov"]), "fee": _f(r["fee"]),
+             "company_income": _f(r["fee"]) + _f(r["share"]), "trust": _f(r["gov"]) - _f(r["share"]), "count": r["n"]}
             for r in cur.fetchall()]
 
 
 def _sum_receipts(cur, start: date, end: date) -> dict:
     cur.execute(
         f"""SELECT COALESCE(SUM(total_amount),0) AS total, COALESCE(SUM(gov_amount),0) AS gov,
-                   COALESCE(SUM(company_fee),0) AS fee, COUNT(*) AS n,
+                   COALESCE(SUM(company_fee),0) AS fee, COALESCE(SUM(company_share),0) AS share, COUNT(*) AS n,
                    COUNT(*) FILTER (WHERE verification_method = 'otp') AS otp
             FROM receipts WHERE issued_at >= {LO} AND issued_at < {HI}""",
         _b(start, end),
     )
     r = cur.fetchone()
     n = r["n"]
-    return {"total": _f(r["total"]), "gov": _f(r["gov"]), "fee": _f(r["fee"]), "count": n,
+    return {"total": _f(r["total"]), "gov": _f(r["gov"]), "fee": _f(r["fee"]), "share": _f(r["share"]),
+            "trust": _f(r["gov"]) - _f(r["share"]), "company_income": _f(r["fee"]) + _f(r["share"]), "count": n,
             "avg_ticket": round(_f(r["total"]) / n) if n else 0, "otp_share": round(r["otp"] / n, 4) if n else None}
 
 
@@ -56,7 +58,7 @@ def _pct_change(cur_v: float, prev_v: float) -> float | None:
 
 # ================================================================ overview
 
-def overview(cur, days: int = 30) -> dict:
+def overview(cur, days: int = 30, role: str = "finance") -> dict:
     today = hr_logic.local_today(cur)
     month_start = today.replace(day=1)
     prev_month_end = month_start - timedelta(days=1)
@@ -123,9 +125,12 @@ def overview(cur, days: int = 30) -> dict:
                    "avg_ticket": round(_f(r["collected"]) / r["receipts"]) if r["receipts"] else 0} for r in cur.fetchall()]
 
     bal = ledger.balances(cur)
-    mov = ledger.period_movements(cur, month_start, today)
-    revenue = sum(m["net"] for c, m in mov.items() if ledger.CHART[c][1] == "revenue")
-    expenses = sum(m["net"] for c, m in mov.items() if ledger.CHART[c][1] == "expense")
+    profit = None
+    if role in ("owner", "admin"):            # profit is the owner's alone
+        mov = ledger.period_movements(cur, month_start, today)
+        income = sum(mov[c]["net"] for c in ledger.INCOME)
+        costs = sum(mov[c]["net"] for c in ledger.COSTS)
+        profit = {"income": round(income, 2), "costs": round(costs, 2), "profit": round(income - costs, 2)}
 
     return {
         "today": today.isoformat(), "month_start": month_start.isoformat(),
@@ -136,9 +141,9 @@ def overview(cur, days: int = 30) -> dict:
             "flagged_share_mtd": round(bm["flagged"] / bm["n"], 4) if bm["n"] else None,
             "active_properties": props["active"], "pending_properties": props["pending"],
             "coverage_30d": round(props["covered30"] / props["active"], 4) if props["active"] else None,
-            "company_revenue_mtd": round(revenue, 2), "company_expenses_mtd": round(expenses, 2),
-            "company_net_mtd": round(revenue - expenses, 2),
+            "company_income_mtd": mtd["company_income"], "trust_mtd": mtd["trust"],
         },
+        "profit_mtd": profit,
         "cash": ledger.cash_position(bal),
         "series": daily_series(cur, today - timedelta(days=days - 1), today),
         "sectors": sectors, "classes": classes, "collectors": collectors,
@@ -149,7 +154,7 @@ def overview(cur, days: int = 30) -> dict:
 
 def forecast(cur, horizon: int = 30, history_days: int = 120) -> dict:
     today = hr_logic.local_today(cur)
-    cur.execute(f"SELECT MIN((issued_at AT TIME ZONE %(tz)s)::date) AS d FROM receipts", {"tz": settings.APP_TIMEZONE})
+    cur.execute("SELECT MIN((issued_at AT TIME ZONE %(tz)s)::date) AS d FROM receipts", {"tz": settings.APP_TIMEZONE})
     first = cur.fetchone()["d"]
     month_end = today.replace(day=calendar.monthrange(today.year, today.month)[1])
     horizon = max(horizon, (month_end - today).days + 1)
@@ -411,24 +416,24 @@ def anomalies(cur, days: int = 30) -> dict:
             "نقد لم يُسلّم للمشرف منذ أكثر من 48 ساعة",
             f"{float(r['held']):,.0f} د.ع في {r['n']} وصل", r["oldest"], r["employee_code"], None)
 
-    # 7. supervisors holding cash not deposited for > 72 h; deposits with a difference
+    # 7. supervisors holding cash not brought to headquarters for > 72 h; HQ counts that don't match
     cur.execute(
         """SELECT e.employee_code, MIN(c.created_at) AS oldest, SUM(c.settled_cash) AS held
            FROM reconciliations c JOIN employees e ON e.id = c.supervisor_id
-           WHERE c.deposit_id IS NULL AND c.resolution_status <> 'pending'
+           WHERE c.deposit_id IS NULL AND c.handover_id IS NULL AND c.resolution_status <> 'pending'
            GROUP BY e.employee_code HAVING MIN(c.created_at) < NOW() - INTERVAL '72 hours'"""
     )
     for r in cur.fetchall():
-        add("deposit_delay", "high", "مشرف لم يودع النقد منذ أكثر من 72 ساعة", f"{_f(r['held']):,.0f} د.ع",
+        add("handover_delay", "high", "مشرف لم يسلّم النقد للمالية منذ أكثر من 72 ساعة", f"{_f(r['held']):,.0f} د.ع",
             r["oldest"], r["employee_code"], None)
     cur.execute(
-        f"""SELECT d.id, d.created_at, d.difference, e.employee_code FROM bank_deposits d JOIN employees e ON e.id = d.supervisor_id
-            WHERE d.difference <> 0 AND d.created_at >= {LO} AND d.created_at < {HI}""",
+        f"""SELECT h.id, h.created_at, h.difference, e.employee_code FROM cash_handovers h JOIN employees e ON e.id = h.supervisor_id
+            WHERE h.difference <> 0 AND h.created_at >= {LO} AND h.created_at < {HI}""",
         bounds,
     )
     for r in cur.fetchall():
-        add("deposit_difference", "high", "وصل الإيداع لا يطابق النقد المستلم",
-            f"الإيداع #{r['id']}: الفرق {float(r['difference']):,.0f} د.ع", r["created_at"], r["employee_code"], str(r["id"]))
+        add("handover_difference", "high", "النقد المعدود في المقر لا يطابق ما استلمه المشرف",
+            f"التسليم #{r['id']}: الفرق {float(r['difference']):,.0f} د.ع", r["created_at"], r["employee_code"], str(r["id"]))
 
     # 8. per-collector behaviour vs peers
     risk_rows = risk(cur, days)["collectors"]

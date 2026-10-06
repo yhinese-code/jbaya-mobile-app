@@ -41,6 +41,8 @@ class Settings:
 
     # --- Billing ---
     COMPANY_FEE_IQD = _float("COMPANY_FEE_IQD", 3000)
+    # % of the water (government) amount the company keeps under its contract; the rest is the directorate's trust money
+    COMPANY_SHARE_PCT = _float("COMPANY_SHARE_PCT", 0)
     ROUND_TO_IQD = _int("ROUND_TO_IQD", 250)                 # smallest practical note
     FIRST_VISIT_PERIOD_DAYS = _int("FIRST_VISIT_PERIOD_DAYS", 30)
     HIGH_CONSUMPTION_FACTOR = _float("HIGH_CONSUMPTION_FACTOR", 3.0)
@@ -78,10 +80,16 @@ class Settings:
     INCOME_TAX_PCT = _float("INCOME_TAX_PCT", 0)                # confirm current Iraqi rates before go-live
     SOCIAL_SECURITY_PCT = _float("SOCIAL_SECURITY_PCT", 0)      # employee share, confirm before go-live
     WARNINGS_BEFORE_SUSPENSION = _int("WARNINGS_BEFORE_SUSPENSION", 3)
+
+    # --- Phase 4b: owner, HQ cash, performance ---
+    OWNER_APPROVAL_IQD = _float("OWNER_APPROVAL_IQD", 250_000)       # write-offs / manual corrections above this wait for the owner
+    HANDOVER_TOLERANCE_IQD = _float("HANDOVER_TOLERANCE_IQD", 0)     # HQ count differences up to this are auto-accepted
+    CASH_OUTSIDE_HQ_ALERT_IQD = _float("CASH_OUTSIDE_HQ_ALERT_IQD", 10_000_000)
+    LOSING_STREAK_ALERT_DAYS = _int("LOSING_STREAK_ALERT_DAYS", 3)
     PING_ONLINE_SECONDS = _int("PING_ONLINE_SECONDS", 300)        # online if a ping arrived within 5 min
     MAX_PLAUSIBLE_SPEED_MPS = _float("MAX_PLAUSIBLE_SPEED_MPS", 41.7)  # 150 km/h between two fixes = suspicious
     MAX_PINGS_PER_REQUEST = _int("MAX_PINGS_PER_REQUEST", 120)
-    TWO_FACTOR_ROLES = [r.strip() for r in _str("TWO_FACTOR_ROLES", "command,admin").split(",") if r.strip()]
+    TWO_FACTOR_ROLES = [r.strip() for r in _str("TWO_FACTOR_ROLES", "command,admin,owner").split(",") if r.strip()]
     COMMAND_SESSION_HOURS = _int("COMMAND_SESSION_HOURS", 8)
     COMMAND_IP_ALLOWLIST = [x.strip() for x in _str("COMMAND_IP_ALLOWLIST", "").split(",") if x.strip()]
     ENFORCE_GEOFENCE = _str("ENFORCE_GEOFENCE", "true").lower() == "true"

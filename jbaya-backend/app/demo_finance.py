@@ -131,8 +131,10 @@ def main():
                     rno = cur.fetchone()["no"]
                     cur.execute(
                         """INSERT INTO receipts (receipt_no, bill_id, property_id, collector_id, gov_amount, company_fee, total_amount,
-                                                 verification_method, issued_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
-                        (rno, bill, pid, cid, gov, fee, gov + fee, "master_code" if master else "otp", paid_at),
+                                                 verification_method, issued_at, company_share)
+                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+                        (rno, bill, pid, cid, gov, fee, gov + fee, "master_code" if master else "otp", paid_at,
+                         round(gov * settings.COMPANY_SHARE_PCT / 100)),
                     )
                     rid = cur.fetchone()["id"]
                     if master:
@@ -165,19 +167,32 @@ def main():
                 rec = cur.fetchone()["id"]
                 cur.execute("UPDATE receipts SET reconciliation_id = %s WHERE id = ANY(%s)", (rec, [r for r, _ in recs]))
                 undeposited.append((rec, counted, day))
-                # weekly bank deposit by the supervisor, verified by finance the next day (not the last few days)
+                # weekly: the supervisor brings the cash to headquarters and finance counts it (not the last few days)
                 if day.weekday() == 3 and day < today - timedelta(days=3):
                     total = sum(c for _, c, _ in undeposited)
-                    dep_at = datetime.combine(day, time(18, 0), tz)
+                    at = datetime.combine(day, time(18, 0), tz)
                     cur.execute(
-                        """INSERT INTO bank_deposits (supervisor_id, amount, expected_amount, difference, bank_name, slip_number,
-                                                      slip_photo_path, status, finance_note, verified_by, verified_at, created_at)
-                           VALUES (%s,%s,%s,0,'مصرف الرافدين',%s,'demo/none.jpg','verified','بيانات تجريبية',%s,%s,%s) RETURNING id""",
-                        (sup, total, total, f"DEMO-{code[-3:]}-{day.isoformat()}", fin, dep_at + timedelta(days=1), dep_at),
+                        """INSERT INTO cash_handovers (supervisor_id, received_by, counted_cash, expected_cash, difference, status,
+                                                       note, created_at) VALUES (%s,%s,%s,%s,0,'matched','بيانات تجريبية',%s) RETURNING id""",
+                        (sup, fin, total, total, at),
                     )
-                    dep = cur.fetchone()["id"]
-                    cur.execute("UPDATE reconciliations SET deposit_id = %s WHERE id = ANY(%s)", (dep, [r for r, _, _ in undeposited]))
+                    hid = cur.fetchone()["id"]
+                    cur.execute("UPDATE reconciliations SET handover_id = %s WHERE id = ANY(%s)", (hid, [r for r, _, _ in undeposited]))
                     undeposited = []
+        # finance banks the cash box every week and hands the directorate its trust money
+        cur.execute("SELECT id, counted_cash, created_at FROM cash_handovers ORDER BY created_at")
+        for h in cur.fetchall():
+            cur.execute("INSERT INTO cash_transfers (direction, amount, reference, note, created_by, created_at) "
+                        "VALUES ('to_bank', %s, 'DEMO', 'بيانات تجريبية', %s, %s)",
+                        (h["counted_cash"], fin, h["created_at"] + timedelta(hours=20)))
+        cur.execute("SELECT COALESCE(SUM(gov_amount - company_share), 0) AS t FROM receipts WHERE issued_at < NOW() - INTERVAL '14 days'")
+        trust = float(cur.fetchone()["t"])
+        cur.execute("SELECT COALESCE(SUM(amount), 0) AS b FROM cash_transfers")
+        banked = float(cur.fetchone()["b"])
+        if trust > 0 and banked > 0:
+            cur.execute("INSERT INTO gov_remittances (amount, bank_ref, note, source, remitted_at, created_by) "
+                        "VALUES (%s, 'DEMO-TR', 'بيانات تجريبية', 'bank', NOW() - INTERVAL '7 days', %s)",
+                        (round(min(trust, banked) * 0.9), fin))
     print(f"Demo finance data created: {n_receipts} receipts over {DAYS} days for JB-0492 (honest) and JB-0493 (suspicious).")
 
 

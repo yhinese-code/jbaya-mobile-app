@@ -523,78 +523,163 @@ CREATE TABLE IF NOT EXISTS journal_lines (
 CREATE INDEX IF NOT EXISTS idx_receipts_issued ON receipts(issued_at);
 CREATE INDEX IF NOT EXISTS idx_bills_paid ON bills(paid_at) WHERE status = 'paid';
 
--- The general ledger is DERIVED from the operational records, so it can never drift from them.
--- Accounts: see app/ledger.py (CHART).
+-- ---------------------------------------------------------------
+-- Phase 4b: owner role, company share of the water amount, cash handed over at HQ, cash box <-> bank, owner approvals
+
+ALTER TABLE employees DROP CONSTRAINT IF EXISTS employees_role_check;
+ALTER TABLE employees ADD CONSTRAINT employees_role_check
+    CHECK (role IN ('collector','supervisor','finance','command','hr','admin','owner'));
+
+-- The company keeps COMPANY_SHARE_PCT of the water amount; the rest is the directorate's trust money.
+ALTER TABLE receipts ADD COLUMN IF NOT EXISTS company_share NUMERIC(14,2) NOT NULL DEFAULT 0;
+
+-- Supervisor brings the cash to headquarters; finance counts it blind.
+CREATE TABLE IF NOT EXISTS cash_handovers (
+    id                  SERIAL PRIMARY KEY,
+    supervisor_id       INT NOT NULL REFERENCES employees(id),
+    received_by         INT NOT NULL REFERENCES employees(id),
+    counted_cash        NUMERIC(14,2) NOT NULL,
+    expected_cash       NUMERIC(14,2) NOT NULL,
+    difference          NUMERIC(14,2) NOT NULL,          -- counted - expected
+    status              VARCHAR(20) NOT NULL CHECK (status IN ('matched','shortage','surplus')),
+    denominations       JSONB,
+    note                TEXT,
+    resolution_status   VARCHAR(20) NOT NULL DEFAULT 'none_needed'
+                        CHECK (resolution_status IN ('none_needed','pending','pending_owner','resolved')),
+    resolution_action   VARCHAR(30),
+    resolution_note     TEXT,
+    resolved_by         INT REFERENCES employees(id),
+    resolved_at         TIMESTAMPTZ,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+ALTER TABLE reconciliations ADD COLUMN IF NOT EXISTS handover_id INT REFERENCES cash_handovers(id);
+
+-- Finance moves money between the HQ cash box and the bank.
+CREATE TABLE IF NOT EXISTS cash_transfers (
+    id              SERIAL PRIMARY KEY,
+    direction       VARCHAR(10) NOT NULL CHECK (direction IN ('to_bank','from_bank')),
+    amount          NUMERIC(14,2) NOT NULL CHECK (amount > 0),
+    reference       VARCHAR(80),
+    note            TEXT,
+    created_by      INT NOT NULL REFERENCES employees(id),
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Where the directorate's money and salaries were paid from.
+ALTER TABLE gov_remittances ADD COLUMN IF NOT EXISTS source VARCHAR(10) NOT NULL DEFAULT 'bank';
+ALTER TABLE payroll_runs ADD COLUMN IF NOT EXISTS paid_from VARCHAR(10) NOT NULL DEFAULT 'bank';
+
+-- Large manual corrections and write-offs wait for the owner.
+ALTER TABLE journal_entries ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'posted';
+ALTER TABLE journal_entries ADD COLUMN IF NOT EXISTS decided_by INT REFERENCES employees(id);
+ALTER TABLE journal_entries ADD COLUMN IF NOT EXISTS decided_at TIMESTAMPTZ;
+ALTER TABLE journal_entries ADD COLUMN IF NOT EXISTS decision_note TEXT;
+
+-- The account book (دفتر الحساب) is DERIVED from what happens in the field, so it can never drift from it.
+-- Accounts: app/ledger.py (CHART). Government money is a trust (أمانة): neither company income nor company debt.
 DROP VIEW IF EXISTS ledger_postings;
 CREATE VIEW ledger_postings AS
--- 1. collection: cash with the collector, government share owed, company fee earned
+-- 1. collection: cash with the collector; the directorate's trust, the company's share and the service fee
 SELECT r.issued_at AS posted_at, '1010'::text AS account, r.total_amount AS debit, 0::numeric AS credit,
-       'receipt'::text AS source, r.receipt_no::text AS ref, 'تحصيل نقدي'::text AS memo, r.collector_id AS employee_id
+       'receipt'::text AS source, r.receipt_no::text AS ref, 'تحصيل من مواطن'::text AS memo, r.collector_id AS employee_id
 FROM receipts r
 UNION ALL
-SELECT r.issued_at, '2100', 0, r.gov_amount, 'receipt', r.receipt_no, 'حصة دائرة الماء', r.collector_id FROM receipts r
+SELECT r.issued_at, '2100', 0, r.gov_amount - r.company_share, 'receipt', r.receipt_no, 'أمانة دائرة الماء', r.collector_id FROM receipts r
 UNION ALL
-SELECT r.issued_at, '4100', 0, r.company_fee, 'receipt', r.receipt_no, 'أجور الشركة', r.collector_id
+SELECT r.issued_at, '4110', 0, r.company_share, 'receipt', r.receipt_no, 'حصة الشركة من مبلغ الماء', r.collector_id
+FROM receipts r WHERE r.company_share <> 0
+UNION ALL
+SELECT r.issued_at, '4100', 0, r.company_fee, 'receipt', r.receipt_no, 'أجور خدمة الجباية', r.collector_id
 FROM receipts r WHERE r.company_fee <> 0
--- 2. blind reconciliation: collector -> supervisor; any difference goes to suspense (or is written off within tolerance)
+-- 2. collector -> supervisor (blind count in the field)
 UNION ALL
-SELECT c.created_at, '1020', c.counted_cash, 0, 'reconciliation', c.id::text, 'استلام نقد من الجابي', c.collector_id
+SELECT c.created_at, '1020', c.counted_cash, 0, 'reconciliation', c.id::text, 'استلم المشرف النقد من الجابي', c.collector_id
 FROM reconciliations c WHERE c.counted_cash <> 0
 UNION ALL
-SELECT c.created_at, '1010', 0, c.expected_cash, 'reconciliation', c.id::text, 'تسليم نقد للمشرف', c.collector_id
+SELECT c.created_at, '1010', 0, c.expected_cash, 'reconciliation', c.id::text, 'سلّم الجابي النقد للمشرف', c.collector_id
 FROM reconciliations c
 UNION ALL
 SELECT c.created_at,
        CASE WHEN c.resolution_status = 'none_needed' THEN (CASE WHEN c.difference < 0 THEN '5300' ELSE '4200' END) ELSE '1290' END,
        GREATEST(-c.difference, 0), GREATEST(c.difference, 0), 'reconciliation', c.id::text,
-       CASE WHEN c.difference < 0 THEN 'عجز في المطابقة' ELSE 'زيادة في المطابقة' END, c.collector_id
+       CASE WHEN c.difference < 0 THEN 'نقص عند تسليم الجابي' ELSE 'زيادة عند تسليم الجابي' END, c.collector_id
 FROM reconciliations c WHERE c.difference <> 0
--- 3. difference resolved: out of suspense
 UNION ALL
 SELECT c.resolved_at,
        CASE WHEN c.difference < 0 THEN (CASE c.resolution_action WHEN 'collector_paid' THEN '1020'
                                                                  WHEN 'salary_deduction' THEN '1200' ELSE '5300' END)
             ELSE '1290' END,
        ABS(c.difference), 0, 'resolution', c.id::text,
-       CASE c.resolution_action WHEN 'collector_paid' THEN 'دفع الجابي العجز' WHEN 'salary_deduction' THEN 'عجز يُستقطع من الراتب'
-                                WHEN 'deposit_surplus' THEN 'إيراد زيادة نقدية' ELSE 'شطب فرق' END, c.collector_id
+       CASE c.resolution_action WHEN 'collector_paid' THEN 'دفع الجابي النقص' WHEN 'salary_deduction' THEN 'النقص يُخصم من راتب الجابي'
+                                WHEN 'deposit_surplus' THEN 'الزيادة تُسجّل إيراداً' ELSE 'شطب الفرق' END, c.collector_id
 FROM reconciliations c
 WHERE c.resolution_status = 'resolved' AND c.difference <> 0
   AND c.resolution_action IN ('collector_paid', 'salary_deduction', 'deposit_surplus', 'write_off')
 UNION ALL
 SELECT c.resolved_at, CASE WHEN c.difference < 0 THEN '1290' ELSE '4200' END, 0, ABS(c.difference), 'resolution', c.id::text,
-       'تسوية الحساب المعلق', c.collector_id
+       'إغلاق الفرق', c.collector_id
 FROM reconciliations c
 WHERE c.resolution_status = 'resolved' AND c.difference <> 0
   AND c.resolution_action IN ('collector_paid', 'salary_deduction', 'deposit_surplus', 'write_off')
--- 4. bank deposit made by the supervisor (in transit until finance checks the bank statement)
+-- 3. supervisor -> finance at headquarters (blind count by finance)
 UNION ALL
-SELECT d.created_at, '1030', d.amount, 0, 'deposit', d.id::text, 'إيداع ' || d.bank_name || ' / ' || d.slip_number, d.supervisor_id
-FROM bank_deposits d
+SELECT h.created_at, '1050', h.counted_cash, 0, 'handover', h.id::text, 'استلمت المالية النقد من المشرف', h.supervisor_id
+FROM cash_handovers h WHERE h.counted_cash <> 0
 UNION ALL
-SELECT d.created_at, '1020', 0, d.expected_amount, 'deposit', d.id::text, 'نقد المشرف إلى المصرف', d.supervisor_id FROM bank_deposits d
+SELECT h.created_at, '1020', 0, h.expected_cash, 'handover', h.id::text, 'سلّم المشرف النقد للمالية', h.supervisor_id
+FROM cash_handovers h
 UNION ALL
-SELECT d.created_at, '1290', GREATEST(-d.difference, 0), GREATEST(d.difference, 0), 'deposit', d.id::text,
-       'فرق بين وصل الإيداع والنقد المستلم', d.supervisor_id
+SELECT h.created_at,
+       CASE WHEN h.resolution_status = 'none_needed' THEN (CASE WHEN h.difference < 0 THEN '5300' ELSE '4200' END) ELSE '1290' END,
+       GREATEST(-h.difference, 0), GREATEST(h.difference, 0), 'handover', h.id::text,
+       CASE WHEN h.difference < 0 THEN 'نقص عند تسليم المشرف' ELSE 'زيادة عند تسليم المشرف' END, h.supervisor_id
+FROM cash_handovers h WHERE h.difference <> 0
+UNION ALL
+SELECT h.resolved_at,
+       CASE WHEN h.difference < 0 THEN (CASE h.resolution_action WHEN 'supervisor_paid' THEN '1050'
+                                                                 WHEN 'salary_deduction' THEN '1200' ELSE '5300' END)
+            ELSE '1290' END,
+       ABS(h.difference), 0, 'handover_resolution', h.id::text,
+       CASE h.resolution_action WHEN 'supervisor_paid' THEN 'دفع المشرف النقص' WHEN 'salary_deduction' THEN 'النقص يُخصم من راتب المشرف'
+                                WHEN 'surplus_income' THEN 'الزيادة تُسجّل إيراداً' ELSE 'شطب الفرق' END, h.supervisor_id
+FROM cash_handovers h WHERE h.resolution_status = 'resolved' AND h.difference <> 0
+UNION ALL
+SELECT h.resolved_at, CASE WHEN h.difference < 0 THEN '1290' ELSE '4200' END, 0, ABS(h.difference), 'handover_resolution', h.id::text,
+       'إغلاق الفرق', h.supervisor_id
+FROM cash_handovers h WHERE h.resolution_status = 'resolved' AND h.difference <> 0
+-- 4. legacy bank deposits made by supervisors before the HQ handover (kept so old data still balances)
+UNION ALL
+SELECT d.created_at, '1030', d.amount, 0, 'deposit', d.id::text, 'إيداع مصرفي قديم من مشرف', d.supervisor_id FROM bank_deposits d
+UNION ALL
+SELECT d.created_at, '1020', 0, d.expected_amount, 'deposit', d.id::text, 'إيداع مصرفي قديم من مشرف', d.supervisor_id FROM bank_deposits d
+UNION ALL
+SELECT d.created_at, '1290', GREATEST(-d.difference, 0), GREATEST(d.difference, 0), 'deposit', d.id::text, 'فرق إيداع قديم', d.supervisor_id
 FROM bank_deposits d WHERE d.difference <> 0
--- 5. finance verified the deposit / rejected it (cash goes back to the supervisor)
 UNION ALL
-SELECT d.verified_at, '1100', d.amount, 0, 'deposit_verified', d.id::text, 'إيداع مؤكد في كشف المصرف', d.supervisor_id
+SELECT d.verified_at, '1100', d.amount, 0, 'deposit_verified', d.id::text, 'إيداع قديم مؤكد', d.supervisor_id
 FROM bank_deposits d WHERE d.status = 'verified'
 UNION ALL
-SELECT d.verified_at, '1030', 0, d.amount, 'deposit_verified', d.id::text, 'إيداع مؤكد', d.supervisor_id
+SELECT d.verified_at, '1030', 0, d.amount, 'deposit_verified', d.id::text, 'إيداع قديم مؤكد', d.supervisor_id
 FROM bank_deposits d WHERE d.status = 'verified'
 UNION ALL
-SELECT d.verified_at, '1030', 0, d.amount, 'deposit_rejected', d.id::text, 'إيداع مرفوض', d.supervisor_id
+SELECT d.verified_at, '1030', 0, d.amount, 'deposit_rejected', d.id::text, 'إيداع قديم مرفوض', d.supervisor_id
 FROM bank_deposits d WHERE d.status = 'rejected'
 UNION ALL
-SELECT d.verified_at, '1020', d.expected_amount, 0, 'deposit_rejected', d.id::text, 'إعادة النقد لعهدة المشرف', d.supervisor_id
+SELECT d.verified_at, '1020', d.expected_amount, 0, 'deposit_rejected', d.id::text, 'إيداع قديم مرفوض', d.supervisor_id
 FROM bank_deposits d WHERE d.status = 'rejected'
 UNION ALL
-SELECT d.verified_at, '1290', GREATEST(d.difference, 0), GREATEST(-d.difference, 0), 'deposit_rejected', d.id::text,
-       'عكس فرق الإيداع', d.supervisor_id
+SELECT d.verified_at, '1290', GREATEST(d.difference, 0), GREATEST(-d.difference, 0), 'deposit_rejected', d.id::text, 'عكس فرق إيداع قديم', d.supervisor_id
 FROM bank_deposits d WHERE d.status = 'rejected' AND d.difference <> 0
--- 6. payroll paid (each payslip line goes to its account; net leaves the bank)
+-- 5. cash box <-> bank
+UNION ALL
+SELECT t.created_at, CASE t.direction WHEN 'to_bank' THEN '1100' ELSE '1050' END, t.amount, 0, 'transfer', t.id::text,
+       CASE t.direction WHEN 'to_bank' THEN 'إيداع من الصندوق في المصرف' ELSE 'سحب من المصرف إلى الصندوق' END, NULL::int
+FROM cash_transfers t
+UNION ALL
+SELECT t.created_at, CASE t.direction WHEN 'to_bank' THEN '1050' ELSE '1100' END, 0, t.amount, 'transfer', t.id::text,
+       CASE t.direction WHEN 'to_bank' THEN 'إيداع من الصندوق في المصرف' ELSE 'سحب من المصرف إلى الصندوق' END, NULL::int
+FROM cash_transfers t
+-- 6. salaries paid (each payslip line to where it belongs; the net leaves the cash box or the bank)
 UNION ALL
 SELECT pr.paid_at,
        CASE WHEN l.v->>'kind' = 'earning' THEN (CASE WHEN l.v->>'code' = 'reimbursement' THEN '5200' ELSE '5100' END)
@@ -606,17 +691,18 @@ SELECT pr.paid_at,
 FROM payslips p JOIN payroll_runs pr ON pr.id = p.run_id AND pr.status = 'paid'
 CROSS JOIN LATERAL jsonb_array_elements(p.lines) AS l(v)
 UNION ALL
-SELECT pr.paid_at, '1100', 0, p.net, 'payroll', pr.period, 'صافي الراتب', p.employee_id
+SELECT pr.paid_at, CASE pr.paid_from WHEN 'cash' THEN '1050' ELSE '1100' END, 0, p.net, 'payroll', pr.period, 'صافي الراتب', p.employee_id
 FROM payslips p JOIN payroll_runs pr ON pr.id = p.run_id AND pr.status = 'paid' WHERE p.net <> 0
 UNION ALL
-SELECT pr.paid_at, '1200', p.deductions - p.gross, 0, 'payroll', pr.period, 'استقطاعات تتجاوز الراتب', p.employee_id
+SELECT pr.paid_at, '1200', p.deductions - p.gross, 0, 'payroll', pr.period, 'استقطاعات أكبر من الراتب', p.employee_id
 FROM payslips p JOIN payroll_runs pr ON pr.id = p.run_id AND pr.status = 'paid' WHERE p.deductions > p.gross
--- 7. government share handed over
+-- 7. the directorate's money handed over
 UNION ALL
-SELECT g.remitted_at, '2100', g.amount, 0, 'remittance', g.id::text, 'توريد لدائرة الماء ' || g.bank_ref, NULL::int FROM gov_remittances g
+SELECT g.remitted_at, '2100', g.amount, 0, 'remittance', g.id::text, 'تسليم أمانة دائرة الماء ' || g.bank_ref, NULL::int FROM gov_remittances g
 UNION ALL
-SELECT g.remitted_at, '1100', 0, g.amount, 'remittance', g.id::text, 'توريد لدائرة الماء ' || g.bank_ref, NULL::int FROM gov_remittances g
--- 8. manual journal entries
+SELECT g.remitted_at, CASE g.source WHEN 'cash' THEN '1050' ELSE '1100' END, 0, g.amount, 'remittance', g.id::text,
+       'تسليم أمانة دائرة الماء ' || g.bank_ref, NULL::int FROM gov_remittances g
+-- 8. manual corrections (only once posted / approved by the owner)
 UNION ALL
 SELECT j.posted_at, jl.account, jl.debit, jl.credit, 'journal', j.id::text, j.memo, NULL::int
-FROM journal_lines jl JOIN journal_entries j ON j.id = jl.entry_id;
+FROM journal_lines jl JOIN journal_entries j ON j.id = jl.entry_id WHERE j.status = 'posted';

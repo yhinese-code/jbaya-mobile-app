@@ -6,7 +6,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from .. import audit, files
+from .. import audit
 from ..db import dict_cursor, get_conn
 from ..config import settings
 from ..security import require_roles
@@ -313,7 +313,7 @@ def team(user: dict = Depends(supervisor_only)):
 def _undeposited(cur, supervisor_id: int) -> list[dict]:
     cur.execute(
         """SELECT id, settled_cash, resolution_status FROM reconciliations
-           WHERE supervisor_id = %s AND deposit_id IS NULL FOR UPDATE""",
+           WHERE supervisor_id = %s AND deposit_id IS NULL AND handover_id IS NULL FOR UPDATE""",
         (supervisor_id,),
     )
     return cur.fetchall()
@@ -324,11 +324,32 @@ def cash_on_hand(user: dict = Depends(supervisor_only)):
     with get_conn() as conn, dict_cursor(conn) as cur:
         rows = _undeposited(cur, user["id"])
     ready = [r for r in rows if r["resolution_status"] != "pending"]
+    cash = sum(float(r["settled_cash"] or 0) for r in ready)
     return {
-        "cash_to_deposit": sum(float(r["settled_cash"] or 0) for r in ready),
+        "cash_to_hand_over": cash,
+        "cash_to_deposit": cash,          # old name, kept for older app builds
         "reconciliations_ready": len(ready),
         "reconciliations_pending_resolution": len(rows) - len(ready),
     }
+
+
+@router.get("/handovers")
+def my_handovers(user: dict = Depends(supervisor_only)):
+    """Cash this supervisor handed to finance at headquarters, and what finance counted."""
+    with get_conn() as conn, dict_cursor(conn) as cur:
+        cur.execute(
+            """SELECT h.id, h.counted_cash, h.expected_cash, h.difference, h.status, h.resolution_status, h.resolution_action,
+                      h.resolution_note, h.created_at, e.employee_code AS received_by
+               FROM cash_handovers h JOIN employees e ON e.id = h.received_by
+               WHERE h.supervisor_id = %s ORDER BY h.created_at DESC LIMIT 50""",
+            (user["id"],),
+        )
+        rows = cur.fetchall()
+    for r in rows:
+        for k in ("counted_cash", "expected_cash", "difference"):
+            r[k] = float(r[k])
+        r["created_at"] = r["created_at"].isoformat()
+    return rows
 
 
 class DepositIn(BaseModel):
@@ -340,26 +361,7 @@ class DepositIn(BaseModel):
 
 @router.post("/deposits")
 def create_deposit(body: DepositIn, user: dict = Depends(supervisor_only)):
-    with get_conn() as conn, dict_cursor(conn) as cur:
-        rows = _undeposited(cur, user["id"])
-        if not rows:
-            raise HTTPException(409, "لا يوجد نقد مستلم بانتظار الإيداع")
-        if any(r["resolution_status"] == "pending" for r in rows):
-            raise HTTPException(409, "يجب معالجة فروقات المطابقة المعلقة قبل الإيداع")
-        expected = round(sum(float(r["settled_cash"] or 0) for r in rows), 2)
-        diff = round(body.amount - expected, 2)
-        path = files.save_photo(body.slip_photo_base64, "deposits")
-        cur.execute(
-            """INSERT INTO bank_deposits (supervisor_id, amount, expected_amount, difference, bank_name, slip_number, slip_photo_path)
-               VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING id, created_at""",
-            (user["id"], body.amount, expected, diff, body.bank_name.strip(), body.slip_number.strip(), path),
-        )
-        d = cur.fetchone()
-        cur.execute("UPDATE reconciliations SET deposit_id = %s WHERE id = ANY(%s)", (d["id"], [r["id"] for r in rows]))
-        audit.log(cur, user["id"], "bank_deposit", "deposit", d["id"],
-                  {"amount": body.amount, "expected": expected, "difference": diff, "slip": body.slip_number})
-    return {"deposit_id": d["id"], "amount": body.amount, "expected_amount": expected, "difference": diff,
-            "reconciliations": len(rows), "status": "pending"}
+    raise HTTPException(410, "لم يعد الإيداع في المصرف متاحاً للمشرف: سلّم النقد إلى قسم المالية في المقر")
 
 
 @router.get("/deposits")

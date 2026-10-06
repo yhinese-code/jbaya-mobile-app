@@ -8,13 +8,13 @@ from ..db import dict_cursor, get_conn
 from ..security import require_roles
 
 router = APIRouter(prefix="/finance", tags=["finance-analytics"])
-readers = require_roles("finance", "command")
+readers = require_roles("finance", "command", "owner")
 
 
 @router.get("/overview")
 def overview(days: int = Query(30, ge=7, le=180), user: dict = Depends(readers)):
     with get_conn() as conn, dict_cursor(conn) as cur:
-        return fin_data.overview(cur, days)
+        return fin_data.overview(cur, days, user["role"])
 
 
 @router.get("/forecast")

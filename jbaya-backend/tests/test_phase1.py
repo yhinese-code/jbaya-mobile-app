@@ -92,7 +92,7 @@ def test_team_view_has_no_amounts(client):
     assert not any(k for k in me if "amount" in k or "cash" in k)
 
 
-def test_denominations_discrepancy_deposit_and_finance(client, outbox):
+def test_denominations_discrepancy_and_hq_handover(client, outbox):
     sp, fn, cmd = login(client, "SP-01"), login(client, "FN-01"), login(client, "CMD-01")
     with db() as conn, conn.cursor() as cur:
         cur.execute("SELECT SUM(total_amount)::float FROM receipts r JOIN employees e ON e.id = r.collector_id "
@@ -117,9 +117,15 @@ def test_denominations_discrepancy_deposit_and_finance(client, outbox):
     assert r["counted_cash"] == short and r["difference"] == -1000
     assert r["status"] == "shortage" and r["resolution_status"] == "pending"
 
-    # deposit blocked until the shortage is resolved
+    # supervisors no longer use banks: the cash goes to finance at headquarters
     dep_body = {"amount": short, "bank_name": "مصرف الرافدين", "slip_number": "RF-778899", "slip_photo_base64": JPEG}
-    assert client.post("/supervisor/deposits", headers=sp, json=dep_body).status_code == 409
+    assert client.post("/supervisor/deposits", headers=sp, json=dep_body).status_code == 410
+    waiting = client.get("/finance/handovers/waiting", headers=fn).json()
+    row = next(w for w in waiting if w["employee_code"] == "SP-01")
+    assert row["unresolved"] >= 1 and not any("cash" in k or "amount" in k for k in row)     # finance counts blind
+    blocked = client.post("/finance/handovers", headers=fn, json={"supervisor_code": "SP-01", "counted_cash": 1})
+    assert blocked.status_code == 409          # only the shortage is waiting, and it isn't resolved yet
+
     wrong = client.post(f"/supervisor/reconciliations/{r['reconciliation_id']}/resolve", headers=sp,
                         json={"action": "deposit_surplus", "note": "x x x"})
     assert wrong.status_code == 422
@@ -128,31 +134,20 @@ def test_denominations_discrepancy_deposit_and_finance(client, outbox):
     assert ok["settled_cash"] == expected
 
     cash = client.get("/supervisor/cash", headers=sp).json()
-    assert cash["cash_to_deposit"] >= expected and cash["reconciliations_pending_resolution"] == 0
+    assert cash["cash_to_hand_over"] >= expected and cash["reconciliations_pending_resolution"] == 0
 
-    # resolve any other pending reconciliation left by earlier tests, then deposit everything
     for rec in client.get("/supervisor/reconciliations", headers=sp).json():
         if rec["resolution_status"] == "pending":
             client.post(f"/supervisor/reconciliations/{rec['id']}/resolve", headers=sp, json={"action": "escalate", "note": "للتحقيق"})
-    cash = client.get("/supervisor/cash", headers=sp).json()
-    dep_body["amount"] = cash["cash_to_deposit"]
-    d = client.post("/supervisor/deposits", headers=sp, json=dep_body).json()
-    assert d["difference"] == 0 and d["status"] == "pending"
-    assert client.get("/supervisor/cash", headers=sp).json()["cash_to_deposit"] == 0
-    assert client.post("/supervisor/deposits", headers=sp, json=dep_body).status_code == 409
-
-    # finance: list, view slip, reject -> cash returns to supervisor, re-deposit, verify
-    assert client.get("/finance/deposits", headers=sp).status_code == 403
-    listing = client.get("/finance/deposits", headers=fn).json()
-    assert listing["totals"]["pending_count"] == 1 and listing["deposits"][0]["slip_number"] == "RF-778899"
-    assert client.get(f"/finance/deposits/{d['deposit_id']}/slip", headers=fn).json()["mime"] == "image/jpeg"
-    client.post(f"/finance/deposits/{d['deposit_id']}/decision", headers=fn, json={"action": "reject", "note": "الوصل غير واضح"})
-    assert client.get("/supervisor/cash", headers=sp).json()["cash_to_deposit"] == dep_body["amount"]
-    d2 = client.post("/supervisor/deposits", headers=sp, json=dep_body).json()
-    v = client.post(f"/finance/deposits/{d2['deposit_id']}/decision", headers=fn, json={"action": "verify", "note": "مطابق لكشف المصرف"})
-    assert v.json()["status"] == "verified"
-    assert client.post(f"/finance/deposits/{d2['deposit_id']}/decision", headers=fn,
-                       json={"action": "reject", "note": "x x x"}).status_code == 409
+    held = client.get("/supervisor/cash", headers=sp).json()["cash_to_hand_over"]
+    assert client.post("/finance/handovers", headers=sp, json={"supervisor_code": "SP-01", "counted_cash": held}).status_code == 403
+    h = client.post("/finance/handovers", headers=fn, json={"supervisor_code": "SP-01", "counted_cash": held}).json()
+    assert h["difference"] == 0 and h["status"] == "matched" and h["expected_cash"] == held
+    assert client.get("/supervisor/cash", headers=sp).json()["cash_to_hand_over"] == 0
+    assert client.post("/finance/handovers", headers=fn, json={"supervisor_code": "SP-01", "counted_cash": held}).status_code == 409
+    mine = client.get("/supervisor/handovers", headers=sp).json()
+    assert mine[0]["counted_cash"] == held and mine[0]["received_by"] == "FN-01"
+    assert client.get("/finance/deposits", headers=fn).json()["totals"]["pending_count"] == 0    # legacy list still works
 
 
 def test_surplus_escalated_to_command(client, outbox):

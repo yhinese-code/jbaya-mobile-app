@@ -294,10 +294,27 @@ class _PayrollTabState extends State<PayrollTab> {
   }
 
   Future<void> _action(String action) async {
-    final ok = await confirm(context, action == 'approve' ? 'اعتماد الرواتب' : 'تأكيد صرف الرواتب',
-        action == 'approve' ? 'بعد الاعتماد لا يمكن إعادة الاحتساب، وتظهر القسائم للموظفين.' : 'سيتم تسجيل الرواتب كمصروفة.');
-    if (!ok || !mounted) return;
-    await runApi(context, () => ApiClient.instance.post('/hr/payroll/runs/$_period/action', {'action': action}));
+    String? paidFrom;
+    if (action == 'approve') {
+      final ok = await confirm(context, 'اعتماد الرواتب', 'بعد الاعتماد لا يمكن إعادة الاحتساب، وتظهر القسائم للموظفين.');
+      if (!ok || !mounted) return;
+    } else {
+      paidFrom = await showDialog<String>(
+        context: context,
+        builder: (ctx) => SimpleDialog(
+          title: const Text('من أين تُصرف الرواتب؟'),
+          children: [
+            SimpleDialogOption(onPressed: () => Navigator.pop(ctx, 'cash'), child: const Text('نقداً من صندوق المالية')),
+            SimpleDialogOption(onPressed: () => Navigator.pop(ctx, 'bank'), child: const Text('تحويل من المصرف')),
+          ],
+        ),
+      );
+      if (paidFrom == null || !mounted) return;
+    }
+    await runApi(context, () => ApiClient.instance.post('/hr/payroll/runs/$_period/action', {
+          'action': action,
+          if (paidFrom != null) 'paid_from': paidFrom,
+        }));
     _runs.currentState?.reload();
     _detail.currentState?.reload();
   }

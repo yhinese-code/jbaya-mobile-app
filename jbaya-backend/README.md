@@ -109,36 +109,40 @@ the account; `WARNINGS_BEFORE_SUSPENSION` written warnings in 12 months recommen
 (opening → applicants → one-click hire creates the account), training (mandatory courses auto-assigned by role).
 Termination is blocked while the employee holds custody items or unreconciled cash.
 
-## Phase 4 additions (Finance)
+## Phase 4 additions (Finance, reworked)
 
-**General ledger, derived, never typed:** the `ledger_postings` view turns operational records into double-entry
-postings, so the books always match the field data:
-receipt → Dr cash with collector / Cr due to water directorate + Cr company fee revenue;
-reconciliation → cash moves collector → supervisor, any difference sits in suspense (1290) until resolved
-(collector paid / salary deduction → employee receivable / write-off / surplus income);
-deposit → in transit → bank when finance verifies (back to the supervisor if rejected);
-payroll paid → salaries expense, reimbursements, recovered shortages, tax payable, net out of the bank;
-government remittance → Dr due to government / Cr bank. Manual journal entries only for accounts marked manual
-(bank, opening balances, suspense clearing, taxes, operating expenses); entries are reversed, never deleted.
-Chart of accounts: `app/ledger.py`.
+**Money model.** Each receipt splits into: the **company's income** (the service fee + `COMPANY_SHARE_PCT` % of the
+water amount, fixed on the receipt) and the **water directorate's trust money** (أمانة دائرة الماء: the rest of the
+water amount). The trust is neither company income nor a company debt: it is collected, held, and handed over.
 
-**Endpoints (finance; read-only ones also for command):** `/finance/overview`, `/finance/trial-balance?as_of=`,
-`/finance/ledger?account=&start=&end=`, `/finance/income-statement?period=`, `/finance/journal` (+ `/reverse`),
-`/finance/remittances`, `/finance/escalations` + `/finance/reconciliations/{id}/close`, `/finance/forecast`,
-`/finance/benford?dataset=&collector=`, `/finance/anomalies?days=`, `/finance/risk?days=`, `/finance/aging`.
+**Cash chain.** Collector → supervisor (blind count in the field) → **finance at headquarters** (second blind count:
+finance sees who has cash, not how much, until the count is saved) → finance cash box (صندوق المالية) → bank (finance
+transfer) → the directorate (trust handover, from the cash box or the bank). Supervisors no longer deposit in banks
+(`POST /supervisor/deposits` returns 410); old deposits still show and balance.
 
-**Analytics (pure Python, `app/fin_math.py`):**
-- Forecast: Holt-Winters with weekly seasonality (learns the Friday dip), parameters by grid search, 95% band,
-  month-end projection.
-- Benford first-digit test (Nigrini MAD thresholds + chi-square), per collector and **against the other collectors**
-  (household consumption spans a narrow range, so peer comparison is the stronger signal), plus a last-digit test on
-  meter readings (too many readings ending in 0/5 = typed without looking).
-- Anomalies: flagged bills, meter that doesn't move twice in a row, receipts at night, two receipts too fast to walk
-  between, tracker far from the house at receipt time, cash held > 48 h, supervisor not depositing > 72 h, deposit
-  differences, master-code / estimate / digit-preference / low-ticket outliers vs peers, shortages.
-- Risk score 0-100 per collector, explainable: shortage 20, master code 15, security events 15, estimates 10,
-  digit preference 10, Benford 10, flagged bills 10, cash holding 10.
-- Arrears aging: estimated government share owed since each property's last payment, by bucket and sector.
+**Account book (دفتر الحساب).** Still double entry underneath (`ledger_postings` view, always balanced), but shown as
+"دخل / خرج / فيه الآن". Finance sees where the cash is, the trust, and what employees owe; company income and cost
+accounts and profit are **owner only**. Manual corrections come as plain choices (bank charge, cash expense, tax paid,
+opening balances); write-offs and corrections above `OWNER_APPROVAL_IQD` wait for the owner.
+
+**Owner panel (`owner` role, WhatsApp code at login).** Profit by month, company income by sector and per property,
+company breakeven (receipts needed this month to cover all salaries), approvals, a log of every finance action,
+alerts (cash outside HQ above `CASH_OUTSIDE_HQ_ALERT_IQD`, differences, approvals waiting, behind breakeven).
+
+**Breakeven & performance** (`app/performance.py`). Per collector per working day: cost = (salary + allowances) ÷
+working days + commission; company earnings = fee + share on his receipts. A day below cost is a losing day;
+`LOSING_STREAK_ALERT_DAYS` in a row flags him. Owner/finance/Command see money (`/performance/collectors`);
+supervisors see houses and labels only (`/supervisor/performance`); the collector sees his own target in houses and
+how far he is from the team average (`/collector/coach`).
+
+**Endpoints:** `/finance/handovers/waiting`, `/finance/handovers` (+ `/{id}/resolve`), `/finance/transfers`,
+`/finance/book`, `/finance/book/{account}`, `/finance/trust`, `/finance/remittances`, `/finance/differences`,
+`/finance/reconciliations/{id}/close`, `/finance/journal` (+ `/simple`, `/{id}/reverse`); owner:
+`/owner/summary`, `/owner/approvals` (+ `/{kind}/{id}`), `/owner/finance-log`, `/owner/performance`,
+`/finance/income-statement`, `/finance/trial-balance`. Analytics as before: `/finance/overview`, `/finance/forecast`,
+`/finance/benford`, `/finance/anomalies`, `/finance/risk`, `/finance/aging`.
+
+**Demo history (test databases only):** `python -m app.demo_finance --yes` (90 days, an honest and a suspicious collector).
 
 ## WhatsApp templates to create in Meta Business Manager
 

@@ -22,6 +22,7 @@ MANSOUR = [[33.3100, 44.3500], [33.3300, 44.3500], [33.3300, 44.3800], [33.3100,
 ACCOUNTS = [
     # code,      name,                 role,         sector,  supervisor
     ("ADMIN-01", "مدير النظام",         "admin",      None,    None),
+    ("OWNER-01", "المالك",              "owner",      None,    None),
     ("CMD-01",   "غرفة القيادة",        "command",    None,    None),
     ("FN-01",    "المالية",             "finance",    None,    None),
     ("HR-01",    "الموارد البشرية",     "hr",         None,    None),
@@ -57,10 +58,10 @@ def run():
             )
         # Command and admin log in with a WhatsApp code: give the demo accounts a number if they have none.
         # In WHATSAPP_MODE=console the code is printed in the server terminal. Change to real numbers before going live.
-        for code, phone in (("CMD-01", "9647700000001"), ("ADMIN-01", "9647700000002")):
+        for code, phone in (("CMD-01", "9647700000001"), ("ADMIN-01", "9647700000002"), ("OWNER-01", "9647700000003")):
             cur.execute("UPDATE employees SET phone = %s WHERE employee_code = %s AND phone IS NULL", (phone, code))
         # demo HR data (only fills empty values, never overwrites what HR entered)
-        for role, salary in (("collector", 600000), ("supervisor", 900000), ("finance", 1000000), ("hr", 1000000), ("command", 1200000)):
+        for role, salary in (("collector", 600000), ("supervisor", 900000), ("finance", 1000000), ("hr", 1000000), ("command", 1200000)):  # owner: no salary
             cur.execute(
                 """UPDATE employees SET base_salary = %s, allowance_transport = 50000, hire_date = COALESCE(hire_date, DATE '2026-01-01')
                    WHERE role = %s AND base_salary = 0""",

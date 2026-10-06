@@ -55,7 +55,8 @@ class _FinanceOverviewTabState extends State<FinanceOverviewTab> {
         final sectors = (d['sectors'] as List).cast<Map>();
         final classes = (d['classes'] as List).cast<Map>();
         final cols = (d['collectors'] as List).cast<Map>();
-        final suspense = (asNum(cash['suspense']) ?? 0).toDouble();
+        final suspense = (asNum(cash['differences']) ?? 0).toDouble();
+        final profit = d['profit_mtd'] as Map?;
         return RefreshIndicator(
           onRefresh: reload,
           child: ListView(
@@ -77,12 +78,27 @@ class _FinanceOverviewTabState extends State<FinanceOverviewTab> {
                   color: (asNum(k['mtd_change']) ?? 0) >= 0 ? Colors.green : Colors.red,
                 ),
                 KpiCard(
-                  label: 'صافي ربح الشركة (الشهر)',
-                  value: formatIqd(asNum(k['company_net_mtd'])),
-                  sub: 'إيراد ${compactIqd((asNum(k['company_revenue_mtd']) ?? 0).toDouble())} - مصروف ${compactIqd((asNum(k['company_expenses_mtd']) ?? 0).toDouble())}',
+                  label: 'دخل الشركة هذا الشهر',
+                  value: formatIqd(asNum(k['company_income_mtd'])),
+                  sub: 'أجور الخدمة + حصة الشركة من مبالغ الماء',
                   icon: Icons.account_balance_wallet,
                   color: Colors.indigo,
                 ),
+                KpiCard(
+                  label: 'أمانة دائرة الماء هذا الشهر',
+                  value: formatIqd(asNum(k['trust_mtd'])),
+                  sub: 'ليست دخلاً للشركة',
+                  icon: Icons.lock,
+                  color: Colors.deepOrange,
+                ),
+                if (profit != null)
+                  KpiCard(
+                    label: 'ربح الشركة هذا الشهر (للمالك)',
+                    value: formatIqd(asNum(profit['profit'])),
+                    sub: 'دخل ${compactIqd((asNum(profit['income']) ?? 0).toDouble())} - كلف ${compactIqd((asNum(profit['costs']) ?? 0).toDouble())}',
+                    icon: Icons.savings,
+                    color: (asNum(profit['profit']) ?? 0) >= 0 ? Colors.green : Colors.red,
+                  ),
                 KpiCard(
                   label: 'متوسط الوصل',
                   value: formatIqd(asNum(mtd['avg_ticket'])),
@@ -118,25 +134,26 @@ class _FinanceOverviewTabState extends State<FinanceOverviewTab> {
                 child: Row(children: [
                   _cashStep('لدى الجباة', cash['with_collectors'], Colors.orange),
                   _cashStep('لدى المشرفين', cash['with_supervisors'], Colors.amber.shade800),
-                  _cashStep('قيد الإيداع', cash['in_transit'], Colors.blue),
-                  _cashStep('في المصرف', cash['bank'], Colors.green, arrow: false),
+                  _cashStep('صندوق المالية', cash['cash_box'], Colors.blue),
+                  _cashStep('المصرف', cash['bank'], Colors.green, arrow: false),
                 ]),
               ),
               const SizedBox(height: 8),
               Wrap(spacing: 8, runSpacing: 8, children: [
                 Chip(
-                  avatar: const Icon(Icons.account_balance, size: 18),
-                  label: Text('مستحق لدائرة الماء: ${formatIqd(asNum(cash['due_to_government']))}'),
+                  avatar: const Icon(Icons.lock, size: 18),
+                  label: Text('أمانة دائرة الماء المحفوظة: ${formatIqd(asNum(cash['government_trust']))}'),
                 ),
-                Chip(label: Text('نقد الشركة بعد حصة الحكومة: ${formatIqd(asNum(cash['company_cash_after_government']))}')),
+                Chip(label: Text('نقد الشركة (بعد الأمانة والضرائب): ${formatIqd(asNum(cash['company_cash']))}')),
+                Chip(label: Text('نقد لم يصل المقر بعد: ${formatIqd(asNum(cash['outside_hq']))}')),
                 if (suspense != 0)
                   Chip(
                     backgroundColor: Colors.red.shade50,
                     avatar: const Icon(Icons.warning, color: Colors.red, size: 18),
                     label: Text('فروقات معلقة قيد التحقيق: ${formatIqd(suspense)}'),
                   ),
-                if ((asNum(cash['employee_receivables']) ?? 0) != 0)
-                  Chip(label: Text('عجز يُسترد من الرواتب: ${formatIqd(asNum(cash['employee_receivables']))}')),
+                if ((asNum(cash['employees_owe']) ?? 0) != 0)
+                  Chip(label: Text('نقص يُخصم من الرواتب: ${formatIqd(asNum(cash['employees_owe']))}')),
               ]),
               SectionTitle('التحصيل اليومي', actions: [
                 SegmentedButton<int>(
@@ -152,7 +169,8 @@ class _FinanceOverviewTabState extends State<FinanceOverviewTab> {
                     labels: series.map((s) => shortDay('${s['day']}')).toList(),
                     series: [
                       LineSeries('المحصل', series.map((s) => (asNum(s['total']) ?? 0).toDouble()).toList(), Colors.teal, fill: true),
-                      LineSeries('أجور الشركة', series.map((s) => (asNum(s['fee']) ?? 0).toDouble()).toList(), Colors.indigo, width: 1.5),
+                      LineSeries('دخل الشركة', series.map((s) => (asNum(s['company_income']) ?? 0).toDouble()).toList(), Colors.indigo, width: 1.5),
+                      LineSeries('أمانة الدائرة', series.map((s) => (asNum(s['trust']) ?? 0).toDouble()).toList(), Colors.deepOrange, width: 1.5),
                     ],
                   ),
                 ),
@@ -335,3 +353,86 @@ class ForecastTab extends StatelessWidget {
     );
   }
 }
+
+// ================================================================ arrears aging
+
+class AgingTab extends StatelessWidget {
+  const AgingTab({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return ApiView(
+      path: '/finance/aging',
+      builder: (context, d, reload) {
+        final buckets = (d['buckets'] as List).cast<Map>();
+        final sectors = (d['sectors'] as List).cast<Map>();
+        final top = (d['top'] as List).cast<Map>();
+        const colors = [Colors.green, Colors.amber, Colors.orange, Colors.deepOrange, Colors.red];
+        return RefreshIndicator(
+          onRefresh: reload,
+          child: ListView(
+            padding: const EdgeInsets.all(12),
+            children: [
+              KpiCard(
+                width: 320,
+                label: 'متأخرات تقديرية (الحصة الحكومية)',
+                value: formatIqd(asNum(d['total_estimated'])),
+                icon: Icons.hourglass_bottom,
+                color: Colors.deepOrange,
+              ),
+              const SectionTitle('أعمار المتأخرات (أيام منذ آخر دفعة)'),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(children: [
+                    SimpleBarChart(
+                      labels: buckets.map((b) => '${b['key']}').toList(),
+                      values: buckets.map((b) => (asNum(b['estimated']) ?? 0).toDouble()).toList(),
+                      colors: colors,
+                      height: 200,
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(spacing: 8, runSpacing: 8, children: [
+                      for (var i = 0; i < buckets.length; i++)
+                        StatusChip('${buckets[i]['label']} (${buckets[i]['key']}): ${buckets[i]['properties']} عقار', colors[i]),
+                    ]),
+                  ]),
+                ),
+              ),
+              const SectionTitle('حسب القاطع'),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: HBarList(
+                    color: Colors.deepOrange,
+                    rows: sectors
+                        .map((s) => (
+                              label: '${s['name']}',
+                              value: (asNum(s['estimated']) ?? 0).toDouble(),
+                              trailing: '${compactIqd((asNum(s['estimated']) ?? 0).toDouble())} | ${s['overdue']}/${s['properties']} متأخر',
+                            ))
+                        .toList(),
+                  ),
+                ),
+              ),
+              const SectionTitle('أعلى العقارات متأخرات'),
+              ...top.map((p) => Card(
+                    child: ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: (asNum(p['days']) ?? 0) > 90 ? Colors.red.shade100 : Colors.orange.shade100,
+                        child: Text('${p['days']}', style: const TextStyle(fontSize: 12)),
+                      ),
+                      title: Text('${p['property_code']} - ${p['citizen']}'),
+                      subtitle: Text('${p['sector']} | ${p['address']} | ${p['never_paid'] == true ? 'لم يدفع منذ التسجيل' : 'آخر دفعة ${formatDate(p['last_paid'])}'}'),
+                      trailing: Text(formatIqd(asNum(p['estimated'])), style: const TextStyle(fontWeight: FontWeight.bold)),
+                    ),
+                  )),
+              Padding(padding: const EdgeInsets.all(8), child: Text('${d['note']}', style: const TextStyle(color: Colors.grey, fontSize: 12))),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+

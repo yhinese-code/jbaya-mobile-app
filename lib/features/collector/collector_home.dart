@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/session.dart';
+import '../performance/performance_tabs.dart';
 import '../self_service/self_service_screen.dart' show SelfServiceButton;
 import '../shared/inbox_button.dart';
 import 'receipts_screen.dart';
@@ -23,9 +24,15 @@ class _CollectorHomeState extends State<CollectorHome> {
   final _routeKey = GlobalKey<RouteScreenState>();
   final _receiptsKey = GlobalKey<ReceiptsScreenState>();
   final _summaryKey = GlobalKey<SummaryBarState>();
+  final _coachKey = GlobalKey<CoachCardState>();
+
+  void _reloadTop() {
+    _summaryKey.currentState?.reload();
+    _coachKey.currentState?.reload();
+  }
 
   void _refreshAll() {
-    _summaryKey.currentState?.reload();
+    _reloadTop();
     if (_index == 1) _routeKey.currentState?.reload();
     if (_index == 2) _receiptsKey.currentState?.reload();
   }
@@ -42,7 +49,7 @@ class _CollectorHomeState extends State<CollectorHome> {
         backgroundColor: const Color(0xFF004D40),
         foregroundColor: Colors.white,
         actions: [
-          SosButton(onSent: () => _summaryKey.currentState?.reload()),
+          SosButton(onSent: _reloadTop),
           const InboxButton(),
           const SelfServiceButton(),
           IconButton(tooltip: 'تحديث', icon: const Icon(Icons.refresh), onPressed: _refreshAll),
@@ -52,13 +59,14 @@ class _CollectorHomeState extends State<CollectorHome> {
       body: Column(
         children: [
           SummaryBar(key: _summaryKey),
+          CoachCard(key: _coachKey),
           const Divider(height: 1),
           Expanded(
             child: IndexedStack(
               index: _index,
               children: [
-                RegistrationScreen(onCollected: () => _summaryKey.currentState?.reload()),
-                RouteScreen(key: _routeKey, onCollected: () => _summaryKey.currentState?.reload()),
+                RegistrationScreen(onCollected: _reloadTop),
+                RouteScreen(key: _routeKey, onCollected: _reloadTop),
                 ReceiptsScreen(key: _receiptsKey),
               ],
             ),

@@ -67,6 +67,11 @@ def _check_gps(lat: float, lng: float, accuracy: float | None, is_mocked: bool =
         raise HTTPException(422, f"دقة الموقع ضعيفة ({accuracy:.0f} م). انتظر قليلاً في مكان مفتوح ثم أعد الالتقاط")
 
 
+def company_share(gov_amount) -> float:
+    """The company's contractual % of the water amount (fixed on the receipt so later % changes don't rewrite history)."""
+    return round(float(gov_amount) * settings.COMPANY_SHARE_PCT / 100)
+
+
 def cash_in_hand(cur, collector_id: int) -> float:
     """Cash the collector is carrying: receipts not yet handed to the supervisor."""
     cur.execute(
@@ -408,9 +413,10 @@ def verify_bill(bill_id: int, body: VerifyIn, user: dict = Depends(collector_onl
             receipt_no = cur.fetchone()["no"]
             cur.execute(
                 """INSERT INTO receipts (receipt_no, bill_id, property_id, collector_id, gov_amount, company_fee,
-                                         total_amount, verification_method)
-                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *""",
-                (receipt_no, b["id"], p["id"], user["id"], b["gov_amount"], b["company_fee"], b["total_amount"], res["method"]),
+                                         total_amount, verification_method, company_share)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *""",
+                (receipt_no, b["id"], p["id"], user["id"], b["gov_amount"], b["company_fee"], b["total_amount"], res["method"],
+                 company_share(b["gov_amount"])),
             )
             receipt = cur.fetchone()
             audit.log(cur, user["id"], "payment_verified", "bill", b["id"],

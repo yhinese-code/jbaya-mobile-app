@@ -6,6 +6,7 @@ import '../collector/collector_home.dart';
 import '../command/command_screen.dart';
 import '../finance/finance_portal_screen.dart';
 import '../hr/hr_portal_screen.dart';
+import '../owner/owner_portal_screen.dart';
 import '../supervisor/supervisor_screen.dart';
 
 /// One login for every role. The server decides the role and (for collectors) the sector.
@@ -114,6 +115,9 @@ class _LoginScreenState extends State<LoginScreen> {
         break;
       case 'hr':
         next = const HrPortalScreen();
+        break;
+      case 'owner':
+        next = const OwnerPortalScreen();
         break;
       case 'command':
       case 'admin':

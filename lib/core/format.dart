@@ -127,3 +127,11 @@ Color statusColor(String? s) {
       return const Color(0xFFEF6C00);
   }
 }
+
+/// Arabic count of houses with correct agreement: منزل واحد، منزلان، 3 منازل، 11 منزلاً
+String housesAr(int n) {
+  if (n == 1) return 'منزل واحد';
+  if (n == 2) return 'منزلان';
+  if (n >= 3 && n <= 10) return '$n منازل';
+  return '$n منزلاً';
+}
