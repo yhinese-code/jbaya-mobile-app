@@ -223,10 +223,19 @@ class _ReconciliationTabState extends State<ReconciliationTab> {
               initialValue: _selected,
               decoration: const InputDecoration(labelText: 'الجابي', border: OutlineInputBorder(), prefixIcon: Icon(Icons.badge)),
               items: _collectors
-                  .map((c) => DropdownMenuItem(
-                        value: c['employee_code'] as String,
-                        child: Text('${c['employee_code']} - ${c['full_name']} (${c['open_receipts']} وصل)'),
-                      ))
+                  .map((c) {
+                    final open = (asNum(c['open_receipts']) ?? 0) > 0;
+                    return DropdownMenuItem(
+                      value: c['employee_code'] as String,
+                      enabled: open,
+                      child: Text(
+                        open
+                            ? '${c['employee_code']} - ${c['full_name']} (${c['open_receipts']} وصل)'
+                            : '${c['employee_code']} - ${c['full_name']} (لا توجد وصولات للتسوية)',
+                        style: open ? null : const TextStyle(color: Colors.grey),
+                      ),
+                    );
+                  })
                   .toList(),
               onChanged: (v) => setState(() => _selected = v),
             ),
@@ -327,13 +336,21 @@ class _ReconciliationTabState extends State<ReconciliationTab> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const Text('فروقات بانتظار المعالجة', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            const Text(
+              'تم إغلاق صندوق هذا الجابي. لا تُعِد العدّ: اضغط "معالجة الفرق" واختر الإجراء المناسب.',
+              style: TextStyle(fontSize: 12, color: Colors.black54),
+            ),
             ...pending.map((h) => ListTile(
                   contentPadding: EdgeInsets.zero,
                   title: Text('${h['collector_code']} - ${h['collector_name']}'),
                   subtitle: Text('${h['status'] == 'shortage' ? 'عجز' : 'زيادة'}: ${formatIqd(asNum(h['difference']))}'),
-                  trailing: TextButton(
+                  trailing: ElevatedButton(
                     onPressed: () => _resolve(h['id'] as int, h['status'] as String),
-                    child: const Text('معالجة'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: h['status'] == 'shortage' ? Colors.red : Colors.orange,
+                      foregroundColor: Colors.white,
+                    ),
+                    child: const Text('معالجة الفرق'),
                   ),
                 )),
           ],
