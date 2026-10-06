@@ -142,6 +142,7 @@ class ApiViewState extends State<ApiView> {
   }
 
   Future<void> reload() async {
+    if (!mounted) return;
     setState(() {
       _loading = _data == null;
       _error = null;

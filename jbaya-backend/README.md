@@ -109,6 +109,37 @@ the account; `WARNINGS_BEFORE_SUSPENSION` written warnings in 12 months recommen
 (opening → applicants → one-click hire creates the account), training (mandatory courses auto-assigned by role).
 Termination is blocked while the employee holds custody items or unreconciled cash.
 
+## Phase 4 additions (Finance)
+
+**General ledger, derived, never typed:** the `ledger_postings` view turns operational records into double-entry
+postings, so the books always match the field data:
+receipt → Dr cash with collector / Cr due to water directorate + Cr company fee revenue;
+reconciliation → cash moves collector → supervisor, any difference sits in suspense (1290) until resolved
+(collector paid / salary deduction → employee receivable / write-off / surplus income);
+deposit → in transit → bank when finance verifies (back to the supervisor if rejected);
+payroll paid → salaries expense, reimbursements, recovered shortages, tax payable, net out of the bank;
+government remittance → Dr due to government / Cr bank. Manual journal entries only for accounts marked manual
+(bank, opening balances, suspense clearing, taxes, operating expenses); entries are reversed, never deleted.
+Chart of accounts: `app/ledger.py`.
+
+**Endpoints (finance; read-only ones also for command):** `/finance/overview`, `/finance/trial-balance?as_of=`,
+`/finance/ledger?account=&start=&end=`, `/finance/income-statement?period=`, `/finance/journal` (+ `/reverse`),
+`/finance/remittances`, `/finance/escalations` + `/finance/reconciliations/{id}/close`, `/finance/forecast`,
+`/finance/benford?dataset=&collector=`, `/finance/anomalies?days=`, `/finance/risk?days=`, `/finance/aging`.
+
+**Analytics (pure Python, `app/fin_math.py`):**
+- Forecast: Holt-Winters with weekly seasonality (learns the Friday dip), parameters by grid search, 95% band,
+  month-end projection.
+- Benford first-digit test (Nigrini MAD thresholds + chi-square), per collector and **against the other collectors**
+  (household consumption spans a narrow range, so peer comparison is the stronger signal), plus a last-digit test on
+  meter readings (too many readings ending in 0/5 = typed without looking).
+- Anomalies: flagged bills, meter that doesn't move twice in a row, receipts at night, two receipts too fast to walk
+  between, tracker far from the house at receipt time, cash held > 48 h, supervisor not depositing > 72 h, deposit
+  differences, master-code / estimate / digit-preference / low-ticket outliers vs peers, shortages.
+- Risk score 0-100 per collector, explainable: shortage 20, master code 15, security events 15, estimates 10,
+  digit preference 10, Benford 10, flagged bills 10, cash holding 10.
+- Arrears aging: estimated government share owed since each property's last payment, by bucket and sector.
+
 ## WhatsApp templates to create in Meta Business Manager
 
 Meta only allows business-initiated messages through approved templates, and codes must use an

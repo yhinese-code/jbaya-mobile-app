@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../core/session.dart';
+import '../finance/fraud_tabs.dart';
 import '../shared/alerts_tab.dart';
 import 'cc_widgets.dart';
 import 'escalations_tab.dart';
@@ -39,6 +40,7 @@ class _CentralCommandScreenState extends State<CentralCommandScreen> {
     (Icons.key, 'الرمز الرئيسي'),
     (Icons.sos, 'الاستغاثات'),
     (Icons.report, 'فروقات نقدية'),
+    (Icons.gpp_maybe, 'المخاطر المالية'),
     (Icons.monitor_heart, 'صحة النظام'),
   ];
 
@@ -87,6 +89,8 @@ class _CentralCommandScreenState extends State<CentralCommandScreen> {
         return const AlertsTab();
       case 7:
         return const EscalationsTab();
+      case 8:
+        return const FinancialRiskCommandTab();
       default:
         return const HealthTab();
     }
