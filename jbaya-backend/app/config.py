@@ -62,6 +62,15 @@ class Settings:
     OCR_MISMATCH_TOLERANCE = _float("OCR_MISMATCH_TOLERANCE", 1.0)      # m3
     RECON_TOLERANCE_IQD = _float("RECON_TOLERANCE_IQD", 0)              # differences up to this are auto-accepted
     STORAGE_DIR = _str("STORAGE_DIR", "storage")
+
+    # --- Phase 2: live tracking & Command security ---
+    APP_TIMEZONE = _str("APP_TIMEZONE", "Asia/Baghdad")
+    PING_ONLINE_SECONDS = _int("PING_ONLINE_SECONDS", 300)        # online if a ping arrived within 5 min
+    MAX_PLAUSIBLE_SPEED_MPS = _float("MAX_PLAUSIBLE_SPEED_MPS", 41.7)  # 150 km/h between two fixes = suspicious
+    MAX_PINGS_PER_REQUEST = _int("MAX_PINGS_PER_REQUEST", 120)
+    TWO_FACTOR_ROLES = [r.strip() for r in _str("TWO_FACTOR_ROLES", "command,admin").split(",") if r.strip()]
+    COMMAND_SESSION_HOURS = _int("COMMAND_SESSION_HOURS", 8)
+    COMMAND_IP_ALLOWLIST = [x.strip() for x in _str("COMMAND_IP_ALLOWLIST", "").split(",") if x.strip()]
     ENFORCE_GEOFENCE = _str("ENFORCE_GEOFENCE", "true").lower() == "true"
 
     # --- WhatsApp Business (Meta Cloud API) ---

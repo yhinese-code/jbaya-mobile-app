@@ -118,3 +118,58 @@ def update_tariff(property_class: Literal["Household", "Business", "Industrial",
         )
         audit.log(cur, user["id"], "tariff_updated", "tariff", property_class, body.model_dump())
     return {"property_class": property_class, **body.model_dump()}
+
+
+class EmployeeUpdateIn(BaseModel):
+    full_name: str | None = Field(None, min_length=3, max_length=120)
+    phone: str | None = None
+    active: bool | None = None
+    sector_code: str | None = None
+    supervisor_code: str | None = None
+    password: str | None = Field(None, min_length=8)
+    daily_target_iqd: float | None = Field(None, ge=0)
+
+
+@router.patch("/admin/employees/{employee_code}")
+def update_employee(employee_code: str, body: EmployeeUpdateIn, user: dict = Depends(require_roles("hr"))):
+    """Change an employee's phone (needed for Command 2FA), sector, supervisor, password, target, or suspend them."""
+    sets, args = [], []
+    with get_conn() as conn, dict_cursor(conn) as cur:
+        cur.execute("SELECT id, role FROM employees WHERE UPPER(employee_code) = UPPER(%s)", (employee_code,))
+        emp = cur.fetchone()
+        if not emp:
+            raise HTTPException(404, "الموظف غير موجود")
+        if emp["role"] in ("admin", "command") and user["role"] != "admin":
+            raise HTTPException(403, "تعديل حسابات القيادة والإدارة متاح لمدير النظام فقط")
+        if body.full_name is not None:
+            sets.append("full_name = %s"); args.append(body.full_name)
+        if body.phone is not None:
+            phone = normalize_iraqi_phone(body.phone)
+            if not phone:
+                raise HTTPException(422, "رقم الهاتف غير صالح")
+            sets.append("phone = %s"); args.append(phone)
+        if body.active is not None:
+            sets.append("active = %s"); args.append(body.active)
+        if body.sector_code is not None:
+            cur.execute("SELECT id FROM sectors WHERE code = %s", (body.sector_code,))
+            s = cur.fetchone()
+            if not s:
+                raise HTTPException(404, "القاطع غير موجود")
+            sets.append("sector_id = %s"); args.append(s["id"])
+        if body.supervisor_code is not None:
+            cur.execute("SELECT id FROM employees WHERE employee_code = %s AND role = 'supervisor'", (body.supervisor_code,))
+            s = cur.fetchone()
+            if not s:
+                raise HTTPException(404, "المشرف غير موجود")
+            sets.append("supervisor_id = %s"); args.append(s["id"])
+        if body.password is not None:
+            sets.append("password_hash = %s"); args.append(hash_password(body.password))
+        if body.daily_target_iqd is not None:
+            sets.append("daily_target_iqd = %s"); args.append(body.daily_target_iqd)
+        if not sets:
+            raise HTTPException(422, "لا توجد تعديلات")
+        cur.execute(f"UPDATE employees SET {', '.join(sets)} WHERE id = %s", (*args, emp["id"]))
+        changed = [k for k, v in body.model_dump().items() if v is not None and k != "password"]
+        audit.log(cur, user["id"], "employee_updated", "employee", employee_code.upper(),
+                  {"fields": changed + (["password"] if body.password else [])})
+    return {"employee_code": employee_code.upper(), "updated": True}

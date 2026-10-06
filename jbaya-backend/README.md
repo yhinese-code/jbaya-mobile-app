@@ -71,6 +71,21 @@ the digits (OCR) and the server flags `ocr_mismatch` when the typed reading diff
 Photos are stored under `jbaya-backend/storage/` (ignored by Git) and only served through these authenticated endpoints.
 Back this folder up together with the database.
 
+## Phase 2 additions (Central Command)
+
+**Two-factor login:** roles in `TWO_FACTOR_ROLES` (command, admin) get `{two_factor_required, challenge_id}` from
+`/auth/login`; a code goes to the employee's own WhatsApp; `POST /auth/verify-2fa {challenge_id, code}` returns the token.
+Tokens without the second step are rejected. Optional `COMMAND_IP_ALLOWLIST`. Sessions last `COMMAND_SESSION_HOURS`;
+the screen locks after 15 minutes idle. Set a phone with `PATCH /admin/employees/{code} {"phone": "07..."}` (admin).
+The seed gives CMD-01 / ADMIN-01 demo numbers; in console mode the code prints in the uvicorn window.
+
+**Live tracking:** the field app posts `POST /tracking/ping {points:[{lat,lng,accuracy_m,is_mocked,recorded_at}]}`
+every 30 s (batched when offline). The server records `geofence_exit`, `mock_location` and `impossible_speed` events.
+
+**Command endpoints:** `/command/live`, `/command/feed?after_id=`, `/command/trail/{code}?day=`, `/command/properties`,
+`/command/sectors`, `/command/leaderboard?days=`, `/command/health`, `/command/messages` (send/list);
+field inbox: `/messages/inbox`, `/messages/{id}/read`.
+
 ## WhatsApp templates to create in Meta Business Manager
 
 Meta only allows business-initiated messages through approved templates, and codes must use an

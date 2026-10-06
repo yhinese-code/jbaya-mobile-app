@@ -55,6 +55,10 @@ def run():
                    VALUES (%s,%s,%s,%s,%s,%s) ON CONFLICT (employee_code) DO NOTHING""",
                 (code, name, role, hash_password(password), s["id"] if s else None, sp["id"] if sp else None),
             )
+        # Command and admin log in with a WhatsApp code: give the demo accounts a number if they have none.
+        # In WHATSAPP_MODE=console the code is printed in the server terminal. Change to real numbers before going live.
+        for code, phone in (("CMD-01", "9647700000001"), ("ADMIN-01", "9647700000002")):
+            cur.execute("UPDATE employees SET phone = %s WHERE employee_code = %s AND phone IS NULL", (phone, code))
     print("Seed complete. Demo accounts (password: %s):" % password)
     for code, name, role, *_ in ACCOUNTS:
         print(f"  {code:10} {role}")

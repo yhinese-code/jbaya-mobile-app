@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
 from .db import apply_schema, close_pool, init_pool
-from .routers import admin, alerts, auth, collector, command, finance, legacy, supervisor
+from .routers import admin, alerts, auth, collector, command, finance, legacy, supervisor, tracking
 
 _INSECURE = {"dev-only-change-me-jwt-0000000000000000", "dev-only-change-me-otp-0000000000000000", "dev-only-change-me-master-0000000000000"}
 
@@ -22,7 +22,7 @@ async def lifespan(app: FastAPI):
     close_pool()
 
 
-app = FastAPI(title="Jbaya Collection System API", version="0.3.0", lifespan=lifespan)
+app = FastAPI(title="Jbaya Collection System API", version="0.4.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -38,6 +38,7 @@ app.include_router(command.router)
 app.include_router(admin.router)
 app.include_router(finance.router)
 app.include_router(alerts.router)
+app.include_router(tracking.router)
 app.include_router(legacy.router)
 
 

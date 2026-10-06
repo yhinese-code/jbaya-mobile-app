@@ -252,3 +252,49 @@ CREATE TABLE IF NOT EXISTS sos_alerts (
 ALTER TABLE reconciliations ADD COLUMN IF NOT EXISTS settled_cash NUMERIC(14,2);
 -- reconciliations made before Phase 1: the counted cash is what the supervisor holds
 UPDATE reconciliations SET settled_cash = counted_cash WHERE settled_cash IS NULL AND resolution_status = 'none_needed';
+
+-- ---------------------------------------------------------------
+-- Phase 2: live tracking, two-factor login, broadcast messages
+
+CREATE TABLE IF NOT EXISTS location_pings (
+    id              BIGSERIAL PRIMARY KEY,
+    employee_id     INT NOT NULL REFERENCES employees(id),
+    lat             DOUBLE PRECISION NOT NULL,
+    lng             DOUBLE PRECISION NOT NULL,
+    accuracy_m      REAL,
+    speed_mps       REAL,
+    is_mocked       BOOLEAN NOT NULL DEFAULT FALSE,
+    inside_sector   BOOLEAN,
+    recorded_at     TIMESTAMPTZ NOT NULL,      -- phone time of the fix
+    received_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_pings_employee_time ON location_pings(employee_id, recorded_at DESC);
+
+CREATE TABLE IF NOT EXISTS login_challenges (
+    id              SERIAL PRIMARY KEY,
+    employee_id     INT NOT NULL REFERENCES employees(id),
+    code_hash       TEXT NOT NULL,
+    expires_at      TIMESTAMPTZ NOT NULL,
+    attempts        INT NOT NULL DEFAULT 0,
+    max_attempts    INT NOT NULL,
+    status          VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','verified','expired','locked','superseded')),
+    ip              TEXT,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS messages (
+    id              SERIAL PRIMARY KEY,
+    sender_id       INT NOT NULL REFERENCES employees(id),
+    recipient_id    INT REFERENCES employees(id),     -- NULL = broadcast
+    audience        VARCHAR(20) NOT NULL DEFAULT 'one' CHECK (audience IN ('one','all','collectors','supervisors')),
+    body            TEXT NOT NULL,
+    priority        VARCHAR(10) NOT NULL DEFAULT 'normal' CHECK (priority IN ('normal','urgent')),
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS message_reads (
+    message_id      INT NOT NULL REFERENCES messages(id),
+    employee_id     INT NOT NULL REFERENCES employees(id),
+    read_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (message_id, employee_id)
+);

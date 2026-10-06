@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../features/auth/login_screen.dart';
 import 'api_client.dart';
+import 'tracking_service.dart';
 
 /// The logged-in employee, as returned by POST /auth/login.
 class Session {
@@ -18,9 +19,13 @@ class Session {
   void start(String token, Map<String, dynamic> userData) {
     ApiClient.instance.setToken(token);
     user = userData;
+    if (role == 'collector' || role == 'supervisor') {
+      TrackingService.instance.start();
+    }
   }
 
   static void logout(BuildContext context) {
+    TrackingService.instance.stop();
     ApiClient.instance.setToken(null);
     instance.user = null;
     Navigator.of(context).pushAndRemoveUntil(

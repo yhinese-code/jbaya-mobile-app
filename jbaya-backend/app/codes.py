@@ -126,3 +126,50 @@ def match_master_code(code: str, ts: float | None = None) -> int | None:
     if into_window < settings.MASTER_CODE_GRACE_SECONDS and hmac.compare_digest(code, master_code_for_window(w - 1)):
         return w - 1
     return None
+
+
+# ---------------------------------------------------------------- Two-factor login (Command / admin)
+
+def create_login_challenge(cur, *, employee_id: int, ip: str) -> tuple[dict, str]:
+    cur.execute(
+        "SELECT created_at FROM login_challenges WHERE employee_id = %s AND status = 'pending' ORDER BY created_at DESC LIMIT 1",
+        (employee_id,),
+    )
+    last = cur.fetchone()
+    if last:
+        elapsed = (datetime.now(timezone.utc) - last["created_at"]).total_seconds()
+        if elapsed < settings.OTP_RESEND_COOLDOWN_SECONDS:
+            wait = int(settings.OTP_RESEND_COOLDOWN_SECONDS - elapsed) + 1
+            raise HTTPException(429, f"يرجى الانتظار {wait} ثانية قبل طلب رمز جديد")
+    cur.execute("UPDATE login_challenges SET status = 'superseded' WHERE employee_id = %s AND status = 'pending'", (employee_id,))
+    code = generate_otp()
+    salt = secrets.token_hex(8)
+    expires = datetime.now(timezone.utc) + timedelta(seconds=settings.OTP_TTL_SECONDS)
+    cur.execute(
+        """INSERT INTO login_challenges (employee_id, code_hash, expires_at, max_attempts, ip)
+           VALUES (%s, %s, %s, %s, %s) RETURNING *""",
+        (employee_id, f"{salt}${_otp_hash(salt, code)}", expires, settings.OTP_MAX_ATTEMPTS, ip),
+    )
+    return cur.fetchone(), code
+
+
+def check_login_challenge(cur, *, challenge_id: int, code: str) -> dict:
+    """Same contract as check_challenge: never raises, so failed attempts can be committed."""
+    cur.execute("SELECT * FROM login_challenges WHERE id = %s FOR UPDATE", (challenge_id,))
+    ch = cur.fetchone()
+    if not ch or ch["status"] != "pending":
+        return {"ok": False, "status": 400, "message": "انتهت صلاحية طلب الدخول، يرجى تسجيل الدخول من جديد"}
+    if datetime.now(timezone.utc) > ch["expires_at"]:
+        cur.execute("UPDATE login_challenges SET status = 'expired' WHERE id = %s", (ch["id"],))
+        return {"ok": False, "status": 400, "message": "انتهت صلاحية الرمز، يرجى تسجيل الدخول من جديد"}
+    salt, stored = ch["code_hash"].split("$", 1)
+    if hmac.compare_digest(_otp_hash(salt, (code or "").strip()), stored):
+        cur.execute("UPDATE login_challenges SET status = 'verified', attempts = attempts + 1 WHERE id = %s", (ch["id"],))
+        return {"ok": True, "employee_id": ch["employee_id"]}
+    attempts = ch["attempts"] + 1
+    if attempts >= ch["max_attempts"]:
+        cur.execute("UPDATE login_challenges SET attempts = %s, status = 'locked' WHERE id = %s", (attempts, ch["id"]))
+        return {"ok": False, "status": 400, "message": "تم تجاوز عدد المحاولات، يرجى تسجيل الدخول من جديد", "employee_id": ch["employee_id"]}
+    cur.execute("UPDATE login_challenges SET attempts = %s WHERE id = %s", (attempts, ch["id"]))
+    return {"ok": False, "status": 400, "message": f"الرمز غير صحيح. المحاولات المتبقية: {ch['max_attempts'] - attempts}",
+            "employee_id": ch["employee_id"]}

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/session.dart';
+import '../shared/inbox_button.dart';
 import 'receipts_screen.dart';
 import 'registration_screen.dart';
 import 'route_screen.dart';
@@ -41,6 +42,7 @@ class _CollectorHomeState extends State<CollectorHome> {
         foregroundColor: Colors.white,
         actions: [
           SosButton(onSent: () => _summaryKey.currentState?.reload()),
+          const InboxButton(),
           IconButton(tooltip: 'تحديث', icon: const Icon(Icons.refresh), onPressed: _refreshAll),
           const LogoutButton(),
         ],

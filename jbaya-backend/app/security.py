@@ -2,11 +2,12 @@
 import base64
 import hashlib
 import hmac
+import ipaddress
 import os
 from datetime import datetime, timedelta, timezone
 
 import jwt
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from .config import settings
@@ -30,13 +31,19 @@ def verify_password(password: str, stored: str) -> bool:
         return False
 
 
-def create_token(employee: dict) -> str:
+def needs_two_factor(role: str) -> bool:
+    return role in settings.TWO_FACTOR_ROLES
+
+
+def create_token(employee: dict, mfa: bool = False) -> str:
     now = datetime.now(timezone.utc)
+    hours = settings.COMMAND_SESSION_HOURS if needs_two_factor(employee["role"]) else settings.JWT_TTL_HOURS
     payload = {
         "sub": str(employee["id"]),
         "role": employee["role"],
+        "mfa": mfa,
         "iat": now,
-        "exp": now + timedelta(hours=settings.JWT_TTL_HOURS),
+        "exp": now + timedelta(hours=hours),
     }
     return jwt.encode(payload, settings.JWT_SECRET, algorithm="HS256")
 
@@ -44,7 +51,27 @@ def create_token(employee: dict) -> str:
 _bearer = HTTPBearer(auto_error=False)
 
 
-def current_user(creds: HTTPAuthorizationCredentials | None = Depends(_bearer)) -> dict:
+def client_ip(request: Request) -> str:
+    return request.client.host if request.client else ""
+
+
+def ip_allowed(ip: str) -> bool:
+    if not settings.COMMAND_IP_ALLOWLIST:
+        return True
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        return False
+    for entry in settings.COMMAND_IP_ALLOWLIST:
+        try:
+            if addr in ipaddress.ip_network(entry, strict=False):
+                return True
+        except ValueError:
+            continue
+    return False
+
+
+def current_user(request: Request, creds: HTTPAuthorizationCredentials | None = Depends(_bearer)) -> dict:
     if creds is None:
         raise HTTPException(401, "يجب تسجيل الدخول")
     try:
@@ -65,6 +92,11 @@ def current_user(creds: HTTPAuthorizationCredentials | None = Depends(_bearer)) 
         user = cur.fetchone()
     if not user or not user["active"]:
         raise HTTPException(401, "الحساب غير مفعل")
+    if needs_two_factor(user["role"]):
+        if not payload.get("mfa"):
+            raise HTTPException(401, "يجب إكمال التحقق بخطوتين")
+        if not ip_allowed(client_ip(request)):
+            raise HTTPException(403, "الدخول لغرفة القيادة غير مسموح من هذا الجهاز/الشبكة")
     return dict(user)
 
 

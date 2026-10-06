@@ -57,8 +57,18 @@ def db():
 
 
 def login(client, code):
-    r = client.post("/auth/login", json={"employee_code": code, "password": PWD})
+    """Logs in; for Command/admin it completes the WhatsApp two-factor step with the captured code."""
+    captured = []
+    original = whatsapp.send_otp
+    whatsapp.send_otp = lambda phone, c: captured.append(c)
+    try:
+        r = client.post("/auth/login", json={"employee_code": code, "password": PWD})
+    finally:
+        whatsapp.send_otp = original
     assert r.status_code == 200, r.text
+    if r.json().get("two_factor_required"):
+        r = client.post("/auth/verify-2fa", json={"challenge_id": r.json()["challenge_id"], "code": captured[-1]})
+        assert r.status_code == 200, r.text
     return {"Authorization": f"Bearer {r.json()['token']}"}
 
 

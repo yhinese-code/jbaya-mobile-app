@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/session.dart';
 import '../collector/widgets/sos_button.dart';
 import '../shared/alerts_tab.dart';
+import '../shared/inbox_button.dart';
 import 'deposits_tab.dart';
 import 'reconciliation_tab.dart';
 import 'reviews_tab.dart';
@@ -21,7 +22,7 @@ class SupervisorScreen extends StatelessWidget {
           title: Text('بوابة المشرف - ${Session.instance.fullName}', style: const TextStyle(fontWeight: FontWeight.bold)),
           backgroundColor: Colors.orange.shade800,
           foregroundColor: Colors.white,
-          actions: const [SosButton(), LogoutButton()],
+          actions: const [SosButton(), InboxButton(), LogoutButton()],
           bottom: const TabBar(
             isScrollable: true,
             tabAlignment: TabAlignment.start,
