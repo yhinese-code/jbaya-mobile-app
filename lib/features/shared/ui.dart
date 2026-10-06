@@ -133,9 +133,9 @@ class ApiViewState extends State<ApiView> {
   }
 
   @override
-  void didUpdateWidget(covariant ApiView old) {
-    super.didUpdateWidget(old);
-    if (old.path != widget.path) {
+  void didUpdateWidget(covariant ApiView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.path != widget.path) {
       _data = null; // never show the previous path's data under the new filter
       reload();
     }
