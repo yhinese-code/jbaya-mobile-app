@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'core/api_client.dart';
+import 'core/session.dart';
 import 'features/auth/login_screen.dart';
 
 // Project layout (Phase 0):
@@ -9,7 +11,11 @@ import 'features/auth/login_screen.dart';
 //   flutter run -d chrome
 //   flutter run --dart-define=API_URL=http://10.0.2.2:8000     (Android emulator)
 
+final navigatorKey = GlobalKey<NavigatorState>();
+
 void main() {
+  // daily logout, a session ended from the tech panel, a revoked device: go back to the login screen with the reason
+  ApiClient.onSessionEnded = (message) => Session.sessionEnded(navigatorKey.currentState, message);
   runApp(const JbayaEnterpriseApp());
 }
 
@@ -19,6 +25,7 @@ class JbayaEnterpriseApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: navigatorKey,
       debugShowCheckedModeBanner: false,
       title: 'نظام الجباية المركزي',
       theme: ThemeData(

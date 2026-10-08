@@ -24,7 +24,7 @@ def daily_series(cur, start: date, end: date, collector_id: int | None = None) -
     """Collections per LOCAL day, zero-filled."""
     cur.execute(
         """SELECT d::date AS day, COALESCE(SUM(r.total_amount),0) AS total, COALESCE(SUM(r.gov_amount),0) AS gov,
-                  COALESCE(SUM(r.company_fee),0) AS fee, COALESCE(SUM(r.company_share),0) AS share, COUNT(r.id) AS n
+                  COALESCE(SUM(r.company_fee),0) AS fee, COALESCE(SUM(r.company_share + r.gain_share),0) AS share, COUNT(r.id) AS n
            FROM generate_series(%(s)s::date, %(e)s::date, interval '1 day') AS d
            LEFT JOIN receipts r ON r.issued_at >= ((d::date)::timestamp AT TIME ZONE %(tz)s)
                                AND r.issued_at < ((d::date + 1)::timestamp AT TIME ZONE %(tz)s)
@@ -40,7 +40,7 @@ def daily_series(cur, start: date, end: date, collector_id: int | None = None) -
 def _sum_receipts(cur, start: date, end: date) -> dict:
     cur.execute(
         f"""SELECT COALESCE(SUM(total_amount),0) AS total, COALESCE(SUM(gov_amount),0) AS gov,
-                   COALESCE(SUM(company_fee),0) AS fee, COALESCE(SUM(company_share),0) AS share, COUNT(*) AS n,
+                   COALESCE(SUM(company_fee),0) AS fee, COALESCE(SUM(company_share + gain_share),0) AS share, COUNT(*) AS n,
                    COUNT(*) FILTER (WHERE verification_method = 'otp') AS otp
             FROM receipts WHERE issued_at >= {LO} AND issued_at < {HI}""",
         _b(start, end),

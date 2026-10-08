@@ -32,7 +32,8 @@ def summary(user: dict = Depends(owner_only)):
             mov = ledger.period_movements(cur, start, min(end, today))
             income = {c: mov[c]["net"] for c in ledger.INCOME}
             costs = {c: mov[c]["net"] for c in ledger.COSTS}
-            months.append({"period": f"{y}-{m:02d}", "fees": income["4100"], "share": income["4110"], "other": income["4200"],
+            months.append({"period": f"{y}-{m:02d}", "fees": income["4100"], "share": income["4110"], "gain_share": income["4120"],
+                           "other": income["4200"],
                            "income": round(sum(income.values()), 2), "salaries": costs["5100"] + costs["5200"],
                            "losses": costs["5300"], "operating": costs["5400"], "costs": round(sum(costs.values()), 2),
                            "profit": round(sum(income.values()) - sum(costs.values()), 2),
@@ -45,7 +46,7 @@ def summary(user: dict = Depends(owner_only)):
         be = performance.company_breakeven(cur)
         cur.execute(
             """SELECT s.code, s.name, COUNT(DISTINCT p.id) FILTER (WHERE p.status = 'active') AS properties,
-                      COALESCE(SUM(r.company_fee + r.company_share) FILTER (WHERE r.issued_at >= date_trunc('month', NOW())), 0) AS income_mtd
+                      COALESCE(SUM(r.company_fee + r.company_share + r.gain_share) FILTER (WHERE r.issued_at >= date_trunc('month', NOW())), 0) AS income_mtd
                FROM sectors s LEFT JOIN properties p ON p.sector_id = s.id LEFT JOIN receipts r ON r.property_id = p.id
                GROUP BY s.id ORDER BY income_mtd DESC"""
         )
@@ -91,6 +92,14 @@ def _approvals(cur) -> list[dict]:
         out.append({"kind": "handover", "id": h["id"], "amount": abs(_f(h["difference"])),
                     "title": f"شطب {'نقص' if _f(h['difference']) < 0 else 'زيادة'} عند تسليم المشرف {h['person']}",
                     "requested_by": None, "at": _iso(h["created_at"]), "detail": h["resolution_note"]})
+    cur.execute("""SELECT g.*, e.employee_code FROM gain_share_settlements g JOIN employees e ON e.id = g.created_by
+                   WHERE g.status = 'pending_owner' ORDER BY g.created_at""")
+    for g in cur.fetchall():
+        out.append({"kind": "gain_share", "id": g["id"], "amount": _f(g["amount"]),
+                    "title": f"تسوية نسبة الزيادة ({_f(g['pct']):g}%) لشهر {g['month'].isoformat()[:7]}",
+                    "requested_by": g["employee_code"], "at": _iso(g["created_at"]),
+                    "detail": f"المحصّل {_f(g['collected']):,.0f} − أساس 2025 {_f(g['baseline']):,.0f} = زيادة {_f(g['excess']):,.0f}"
+                              f" × {_f(g['pct']):g}% (بعد طرح ما قُيّد على الوصولات مسبقاً)"})
     return out
 
 
@@ -106,11 +115,15 @@ class DecisionIn(BaseModel):
 
 
 @router.post("/approvals/{kind}/{item_id}")
-def decide(kind: Literal["journal", "reconciliation", "handover"], item_id: int, body: DecisionIn,
+def decide(kind: Literal["journal", "reconciliation", "handover", "gain_share"], item_id: int, body: DecisionIn,
            user: dict = Depends(owner_only)):
     approve = body.action == "approve"
     with get_conn() as conn, dict_cursor(conn) as cur:
-        if kind == "journal":
+        if kind == "gain_share":
+            cur.execute("UPDATE gain_share_settlements SET status = %s, decided_by = %s, decided_at = NOW(), decision_note = %s "
+                        "WHERE id = %s AND status = 'pending_owner' RETURNING id",
+                        ("posted" if approve else "rejected", user["id"], body.note, item_id))
+        elif kind == "journal":
             cur.execute("UPDATE journal_entries SET status = %s, decided_by = %s, decided_at = NOW(), decision_note = %s "
                         "WHERE id = %s AND status = 'pending_owner' RETURNING id",
                         ("posted" if approve else "rejected", user["id"], body.note, item_id))
@@ -172,3 +185,83 @@ def owner_performance(period: str | None = Query(None, pattern=r"^\d{4}-\d{2}$")
 def owner_overview(days: int = Query(30, ge=7, le=180), user: dict = Depends(owner_only)):
     with get_conn() as conn, dict_cursor(conn) as cur:
         return fin_data.overview(cur, days, "owner")
+
+
+# ---------------------------------------------------------------- Phase 5: the owner's day, his own settings
+
+@router.get("/today")
+def owner_today(user: dict = Depends(owner_only)):
+    """The day at a glance: today vs the same weekday 4 weeks ago, who has not started, cash outside HQ, open issues."""
+    with get_conn() as conn, dict_cursor(conn) as cur:
+        today = hr_logic.local_today(cur)
+        tz = settings.APP_TIMEZONE
+
+        def day_total(d):
+            cur.execute(
+                """SELECT COALESCE(SUM(total_amount),0) AS t, COUNT(*) AS n,
+                          COALESCE(SUM(company_fee + company_share + gain_share),0) AS income FROM receipts
+                   WHERE issued_at >= (%(d)s::timestamp AT TIME ZONE %(tz)s)
+                     AND issued_at < ((%(d)s::date + 1)::timestamp AT TIME ZONE %(tz)s)
+                     AND (%(d)s::date < %(today)s OR issued_at <= NOW())""",
+                {"d": d, "tz": tz, "today": today},
+            )
+            r = cur.fetchone()
+            return {"total": _f(r["t"]), "receipts": r["n"], "company_income": _f(r["income"])}
+
+        from datetime import timedelta
+        now_t = day_total(today)
+        then_t = day_total(today - timedelta(days=28))
+        cur.execute(
+            """SELECT e.employee_code, e.full_name, e.role FROM employees e
+               WHERE e.role IN ('collector','supervisor') AND e.active
+                 AND NOT EXISTS (SELECT 1 FROM receipts r WHERE r.collector_id = e.id
+                                 AND r.issued_at >= (%(d)s::timestamp AT TIME ZONE %(tz)s))
+                 AND NOT EXISTS (SELECT 1 FROM leave_requests l WHERE l.employee_id = e.id AND l.status = 'approved'
+                                 AND %(d)s BETWEEN l.start_date AND l.end_date)
+               ORDER BY e.employee_code""",
+            {"d": today, "tz": tz},
+        )
+        idle = cur.fetchall()
+        cash = ledger.cash_position(ledger.balances(cur))
+        cur.execute("SELECT COUNT(*) AS n FROM master_code_uses WHERE used_at >= (%s::timestamp AT TIME ZONE %s)", (today, tz))
+        master = cur.fetchone()["n"]
+        cur.execute("""SELECT (SELECT COUNT(*) FROM reconciliations WHERE resolution_status IN ('pending','pending_owner','escalated'))
+                            + (SELECT COUNT(*) FROM cash_handovers WHERE resolution_status IN ('pending','pending_owner')) AS n""")
+        diffs = cur.fetchone()["n"]
+        cur.execute("""SELECT COUNT(*) FILTER (WHERE status <> 'failed') AS sent, COUNT(*) FILTER (WHERE status = 'failed') AS failed
+                       FROM whatsapp_messages WHERE created_at >= date_trunc('month', NOW())""")
+        wa = cur.fetchone()
+        cur.execute("""SELECT status, COUNT(*) AS n FROM callback_audits WHERE assigned_date >= %s - 30 GROUP BY status""", (today,))
+        callbacks = {r["status"]: r["n"] for r in cur.fetchall()}
+        cur.execute("SELECT COUNT(*) AS n FROM sos_alerts WHERE status <> 'closed'")
+        sos = cur.fetchone()["n"]
+    change = (now_t["total"] - then_t["total"]) / then_t["total"] if then_t["total"] else None
+    return {"today": today.isoformat(), "collected": now_t, "same_weekday_4_weeks_ago": then_t,
+            "change": round(change, 4) if change is not None else None,
+            "not_started": idle, "cash_outside_hq": cash["outside_hq"], "cash_alert": cash["outside_hq"] >= settings.CASH_OUTSIDE_HQ_ALERT_IQD,
+            "master_code_uses": master, "open_differences": diffs, "open_sos": sos,
+            "whatsapp_month": {"messages": wa["sent"], "failed": wa["failed"],
+                               "cost_usd": round(wa["sent"] * settings.WHATSAPP_COST_USD, 2)},
+            "callbacks_30_days": callbacks}
+
+
+@router.get("/settings")
+def owner_settings(user: dict = Depends(owner_only)):
+    """The business settings the tech panel lets the owner change himself."""
+    from .. import runtime
+    with get_conn() as conn, dict_cursor(conn) as cur:
+        return runtime.describe(cur, only_owner=True)
+
+
+class OwnerSettingIn(BaseModel):
+    value: object
+    note: str | None = Field(None, max_length=300)
+
+
+@router.post("/settings/{key}")
+def owner_set(key: str, body: OwnerSettingIn, user: dict = Depends(owner_only)):
+    from .. import runtime
+    with get_conn() as conn, dict_cursor(conn) as cur:
+        if user["role"] == "owner" and not runtime.owner_may_edit(cur, key):
+            raise HTTPException(403, "هذا الإعداد يُغيَّر من الإدارة التقنية فقط")
+        return runtime.set_value(cur, key, body.value, user, body.note)

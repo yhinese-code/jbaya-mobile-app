@@ -5,6 +5,7 @@ import '../../core/format.dart';
 import '../../core/location_service.dart';
 import '../../core/photo_service.dart';
 import 'widgets/otp_panel.dart';
+import 'widgets/prev_bill_sheet.dart';
 import 'widgets/receipt_card.dart';
 
 /// Collection for one property (first visit or periodic):
@@ -163,6 +164,11 @@ class _CollectionScreenState extends State<CollectionScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 _propertyHeader(),
+                // Optional, never blocks collection.
+                if (p['id'] is int) ...[
+                  const SizedBox(height: 8),
+                  PrevBillCard(propertyId: p['id'] as int),
+                ],
                 const SizedBox(height: 12),
                 if (_receipt != null)
                   ReceiptCard(receipt: _receipt!, onDone: () => Navigator.of(context).pop(true))

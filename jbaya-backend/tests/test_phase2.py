@@ -19,35 +19,25 @@ def _t(minutes_ago: float) -> str:
     return (datetime.now(timezone.utc) - timedelta(minutes=minutes_ago)).isoformat()
 
 
-def test_command_two_factor(client, outbox):
+def test_no_whatsapp_login_codes(client, outbox):
+    """Phase 5: employees (Command included) log in without WhatsApp codes; tokens without a session are refused."""
     r = client.post("/auth/login", json={"employee_code": "CMD-01", "password": PWD}).json()
-    assert r["two_factor_required"] and "token" not in r and r["phone_masked"].endswith("0001")
-    code = outbox["otp"][-1][1]
-    assert outbox["otp"][-1][0] == "9647700000001"
-    wrong = client.post("/auth/verify-2fa", json={"challenge_id": r["challenge_id"], "code": "000000" if code != "000000" else "111111"})
-    assert wrong.status_code == 400 and "المتبقية" in wrong.json()["detail"]
-    ok = client.post("/auth/verify-2fa", json={"challenge_id": r["challenge_id"], "code": code})
-    assert ok.status_code == 200 and ok.json()["user"]["role"] == "command"
-    # a challenge can be used once
-    assert client.post("/auth/verify-2fa", json={"challenge_id": r["challenge_id"], "code": code}).status_code == 400
-
-    # a token issued without the second step is rejected for Command
+    assert "token" in r and not outbox["otp"]
+    assert client.post("/auth/verify-2fa", json={"challenge_id": 1, "code": "123456"}).status_code == 410
     from app.security import create_token
     with db() as conn, conn.cursor() as cur:
         cur.execute("SELECT id, role FROM employees WHERE employee_code = 'CMD-01'")
         emp_id, role = cur.fetchone()
-    no_mfa = create_token({"id": emp_id, "role": role}, mfa=False)
-    assert client.get("/command/overview", headers={"Authorization": f"Bearer {no_mfa}"}).status_code == 401
-
-    # collectors are not affected
-    r = client.post("/auth/login", json={"employee_code": "JB-0492", "password": PWD}).json()
-    assert "token" in r
+    no_session = create_token({"id": emp_id, "role": role})
+    assert client.get("/command/overview", headers={"Authorization": f"Bearer {no_session}"}).status_code == 401
 
 
 def test_command_ip_allowlist(client, monkeypatch):
     monkeypatch.setattr(settings, "COMMAND_IP_ALLOWLIST", ["10.0.0.0/8"])
     r = client.post("/auth/login", json={"employee_code": "CMD-01", "password": PWD})
     assert r.status_code == 403
+    # field roles are not restricted by the Command list
+    assert client.post("/auth/login", json={"employee_code": "JB-0492", "password": PWD}).status_code == 200
 
 
 def test_tracking_events(client, outbox):

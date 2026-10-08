@@ -73,11 +73,7 @@ Back this folder up together with the database.
 
 ## Phase 2 additions (Central Command)
 
-**Two-factor login:** roles in `TWO_FACTOR_ROLES` (command, admin) get `{two_factor_required, challenge_id}` from
-`/auth/login`; a code goes to the employee's own WhatsApp; `POST /auth/verify-2fa {challenge_id, code}` returns the token.
-Tokens without the second step are rejected. Optional `COMMAND_IP_ALLOWLIST`. Sessions last `COMMAND_SESSION_HOURS`;
-the screen locks after 15 minutes idle. Set a phone with `PATCH /admin/employees/{code} {"phone": "07..."}` (admin).
-The seed gives CMD-01 / ADMIN-01 demo numbers; in console mode the code prints in the uvicorn window.
+**Login (replaced in Phase 5):** no WhatsApp codes for employees any more, see "Phase 5" below.
 
 **Live tracking:** the field app posts `POST /tracking/ping {points:[{lat,lng,accuracy_m,is_mocked,recorded_at}]}`
 every 30 s (batched when offline). The server records `geofence_exit`, `mock_location` and `impossible_speed` events.
@@ -144,6 +140,30 @@ how far he is from the team average (`/collector/coach`).
 
 **Demo history (test databases only):** `python -m app.demo_finance --yes` (90 days, an honest and a suspicious collector).
 
+## Phase 5 additions (tech panel, devices, 35% rule, previous bills)
+
+After pulling: `pip install -r requirements.txt` (adds `openpyxl` for Excel imports), restart uvicorn (the schema
+updates itself), run `python -m app.seed` once (adds **TECH-01**), and in the Flutter folder `flutter pub get`
+(adds `shared_preferences` and `file_picker`).
+
+**Logging in now:** each phone / PC sends a random device id. A new device gets "waiting for approval" and appears in
+the tech panel (الأجهزة). Once approved it is bound to that one account (it can never log into another one) and logs in
+normally. Everyone is logged out daily at `DAILY_LOGOUT_AT` (midnight Baghdad). Limits per role: `DEVICE_LIMITS`
+(Command 2). The very first device that logs into TECH-01 is approved automatically, so log into TECH-01 first.
+
+**Tech panel (role `tech`, TECH-01):** approve/revoke devices, end sessions, create/edit/suspend accounts and change
+roles, every setting and formula (`/tech/settings`, each change logged with old/new value), switches globally / per
+sector / per person, the permission matrix (enforced on the API as well as hiding tabs), tariffs, sectors, WhatsApp
+log and cost, fraud watch, audit log. The tech panel also picks which settings the owner may change himself.
+
+**Behind a reverse proxy (nginx etc.):** the IP allow-list reads the client address, so start uvicorn with
+`--proxy-headers --forwarded-allow-ips=<proxy ip>`, otherwise every request looks like it comes from the proxy.
+
+**Other Phase 5 rules:** citizen-number protocol (hard limit, flags, fast-code flag, daily random call-backs for
+Command); supervisors collect in the field with the same quota (their own cash goes into their handover; their own
+estimates are reviewed by another supervisor); leave is decided by HR only (never by the applicant); the 35% rule
+(`GAIN_SHARE_MODE`, finance tab صيغة الـ35%); previous bills (file import with review, or at the house with a photo).
+
 ## WhatsApp templates to create in Meta Business Manager
 
 Meta only allows business-initiated messages through approved templates, and codes must use an
@@ -154,12 +174,13 @@ Meta only allows business-initiated messages through approved templates, and cod
 2. **`jbaya_bill_notice`**, category *Utility*, Arabic:
    ```
    عزيزي {{1}}، المبلغ المستحق للعقار {{2}} هو {{3}} د.ع (رسوم الاستهلاك {{4}} + أجور الجباية {{5}}).
-   لا تدفع أكثر من هذا المبلغ. الجابي: {{6}}. للشكاوى: {{7}}
+   سيصلك الآن رمز تحقق: اقرأه لموظف الجباية الذي أمامك فقط.
+   لا تدفع أكثر من هذا المبلغ. الموظف: {{6}}. للشكاوى: {{7}}
    ```
 3. **`jbaya_receipt`**, category *Utility*, Arabic:
    ```
-   عزيزي {{1}}، تم استلام دفعتكم. رقم الوصل: {{2}}، المبلغ: {{3}} د.ع، العقار: {{4}}، التاريخ: {{5}}.
-   إذا دفعت مبلغاً أكبر يرجى الاتصال على {{6}}
+   عزيزي {{1}}، تم استلام {{3}} د.ع للعقار {{4}}. رقم الوصل {{2}} بتاريخ {{5}}.
+   لا تدفع أكثر من المبلغ المذكور في هذا الوصل. إذا طُلب منك مبلغ أكبر اتصل على {{6}}
    ```
 
 When approved, put the token and phone number ID in `.env` and set `WHATSAPP_MODE=live`.

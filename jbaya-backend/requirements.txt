@@ -19,3 +19,4 @@ typing_extensions==4.16.0
 urllib3==2.8.0
 uvicorn==0.53.0
 PyJWT==2.15.1
+openpyxl==3.1.5

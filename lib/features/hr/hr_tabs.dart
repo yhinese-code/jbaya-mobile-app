@@ -108,7 +108,9 @@ class _AttendanceDayTabState extends State<AttendanceDayTab> {
 // ================================================================ leave approvals (supervisor step 1, HR step 2)
 
 class LeaveApprovalsTab extends StatefulWidget {
-  const LeaveApprovalsTab({super.key});
+  /// List only (the supervisor sees his team's requests; only HR decides).
+  final bool readOnly;
+  const LeaveApprovalsTab({super.key, this.readOnly = false});
 
   @override
   State<LeaveApprovalsTab> createState() => _LeaveApprovalsTabState();
@@ -130,6 +132,18 @@ class _LeaveApprovalsTabState extends State<LeaveApprovalsTab> {
   Widget build(BuildContext context) {
     final isSupervisor = Session.instance.role == 'supervisor';
     return Column(children: [
+      if (widget.readOnly)
+        Container(
+          width: double.infinity,
+          margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(color: Colors.blue.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(8)),
+          child: const Row(children: [
+            Icon(Icons.info_outline, color: Colors.blue),
+            SizedBox(width: 8),
+            Expanded(child: Text('الموافقة من صلاحية الموارد البشرية فقط')),
+          ]),
+        ),
       Padding(
         padding: const EdgeInsets.all(12),
         child: SegmentedButton<bool>(
@@ -150,7 +164,8 @@ class _LeaveApprovalsTabState extends State<LeaveApprovalsTab> {
               child: ListView(
                 padding: const EdgeInsets.symmetric(horizontal: 12),
                 children: list.map((r) {
-                  final canAct = isSupervisor ? r['status'] == 'pending_supervisor' : '${r['status']}'.startsWith('pending');
+                  final canAct = !widget.readOnly &&
+                      (isSupervisor ? r['status'] == 'pending_supervisor' : '${r['status']}'.startsWith('pending'));
                   return Card(
                     child: Padding(
                       padding: const EdgeInsets.all(12),
@@ -313,7 +328,7 @@ class _PayrollTabState extends State<PayrollTab> {
     }
     await runApi(context, () => ApiClient.instance.post('/hr/payroll/runs/$_period/action', {
           'action': action,
-          if (paidFrom != null) 'paid_from': paidFrom,
+          'paid_from': ?paidFrom,
         }));
     _runs.currentState?.reload();
     _detail.currentState?.reload();

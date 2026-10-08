@@ -537,3 +537,80 @@ def property_detail(property_code: str, user: dict = Depends(command_or_admin)):
             "collector_code": b["collector_code"], "receipt_no": b["receipt_no"], "verification_method": b["verification_method"],
         } for b in bills],
     }
+
+
+# ---------------------------------------------------------------- Phase 5: random call-back audits
+
+CALLBACK_LABELS = {"pending": "لم يُتصل بعد", "confirmed": "أكّد الدفع", "denied": "أنكر الدفع",
+                   "wrong_amount": "دفع مبلغاً مختلفاً", "no_answer": "لم يرد"}
+
+
+def _assign_callbacks(cur, day: date) -> None:
+    """Picks today's random sample once: receipts from the last 2 days that were never called."""
+    cur.execute("SELECT pg_advisory_xact_lock(74002)")      # two Command screens must not both draw the sample
+    cur.execute("SELECT 1 FROM callback_audits WHERE assigned_date = %s LIMIT 1", (day,))
+    if cur.fetchone() or settings.CALLBACK_DAILY_SAMPLE <= 0:
+        return
+    cur.execute(
+        """INSERT INTO callback_audits (receipt_id, assigned_date)
+           SELECT r.id, %s FROM receipts r
+           WHERE r.issued_at >= NOW() - INTERVAL '2 days'
+             AND NOT EXISTS (SELECT 1 FROM callback_audits a WHERE a.receipt_id = r.id)
+           ORDER BY random() LIMIT %s
+           ON CONFLICT (receipt_id) DO NOTHING""",
+        (day, settings.CALLBACK_DAILY_SAMPLE),
+    )
+
+
+@router.get("/callbacks")
+def callbacks(day: date | None = None, user: dict = Depends(command_or_admin)):
+    """Command calls these citizens and asks: did you pay this amount today?"""
+    with get_conn() as conn, dict_cursor(conn) as cur:
+        cur.execute("SELECT (NOW() AT TIME ZONE %s)::date AS d", (settings.APP_TIMEZONE,))
+        today = cur.fetchone()["d"]
+        day = day or today
+        if day == today:
+            _assign_callbacks(cur, day)
+        cur.execute(
+            """SELECT a.id, a.status, a.answer_note, a.called_at, r.receipt_no, r.total_amount, r.issued_at, r.verification_method,
+                      p.property_code, p.address, c.full_name AS citizen_name, c.whatsapp_phone,
+                      e.employee_code AS collector_code, e.full_name AS collector_name, cb.employee_code AS called_by
+               FROM callback_audits a JOIN receipts r ON r.id = a.receipt_id JOIN properties p ON p.id = r.property_id
+               JOIN citizens c ON c.id = p.citizen_id JOIN employees e ON e.id = r.collector_id
+               LEFT JOIN employees cb ON cb.id = a.called_by
+               WHERE a.assigned_date = %s ORDER BY a.status <> 'pending', r.issued_at""",
+            (day,),
+        )
+        rows = cur.fetchall()
+    return {"day": day.isoformat(), "items": [{
+        **r, "total_amount": float(r["total_amount"]), "issued_at": r["issued_at"].isoformat(),
+        "called_at": r["called_at"].isoformat() if r["called_at"] else None,
+        "phone": "0" + r["whatsapp_phone"][3:] if r["whatsapp_phone"].startswith("964") else r["whatsapp_phone"],
+        "status_label": CALLBACK_LABELS[r["status"]]} for r in rows]}
+
+
+class CallbackIn(BaseModel):
+    status: Literal["confirmed", "denied", "wrong_amount", "no_answer"]
+    note: str | None = Field(None, max_length=500)
+
+
+@router.post("/callbacks/{callback_id}")
+def record_callback(callback_id: int, body: CallbackIn, user: dict = Depends(command_or_admin)):
+    if body.status in ("denied", "wrong_amount") and not (body.note or "").strip():
+        raise HTTPException(422, "اكتب ما قاله المواطن")
+    with get_conn() as conn, dict_cursor(conn) as cur:
+        cur.execute("""SELECT a.*, r.bill_id, r.receipt_no, r.collector_id FROM callback_audits a
+                       JOIN receipts r ON r.id = a.receipt_id WHERE a.id = %s FOR UPDATE OF a""", (callback_id,))
+        a = cur.fetchone()
+        if not a:
+            raise HTTPException(404, "غير موجود")
+        if a["status"] not in ("pending", "no_answer"):
+            raise HTTPException(409, "تم تسجيل جواب هذا المواطن مسبقاً")
+        cur.execute("UPDATE callback_audits SET status = %s, answer_note = %s, called_by = %s, called_at = NOW() WHERE id = %s",
+                    (body.status, body.note, user["id"], callback_id))
+        if body.status in ("denied", "wrong_amount"):
+            cur.execute("UPDATE bills SET flags = flags || %s::jsonb WHERE id = %s",
+                        (f'["callback_{body.status}"]', a["bill_id"]))
+        audit.log(cur, user["id"], f"callback_{body.status}", "receipt", a["receipt_no"],
+                  {"note": body.note, "collector_id": a["collector_id"]})
+    return {"id": callback_id, "status": body.status}

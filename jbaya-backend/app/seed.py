@@ -1,6 +1,7 @@
 """Development seed data.  Run once:  python -m app.seed
 Creates tariffs, one demo sector (Al-Mansour) and one account per role.
-All demo accounts share SEED_PASSWORD (default: Jbaya@2026). Change them before going live."""
+All demo accounts share SEED_PASSWORD (default: Jbaya@2026). Change them before going live.
+The FIRST device that logs into TECH-01 is approved automatically; every other new device waits for TECH-01."""
 import json
 import os
 
@@ -22,6 +23,7 @@ MANSOUR = [[33.3100, 44.3500], [33.3300, 44.3500], [33.3300, 44.3800], [33.3100,
 ACCOUNTS = [
     # code,      name,                 role,         sector,  supervisor
     ("ADMIN-01", "مدير النظام",         "admin",      None,    None),
+    ("TECH-01",  "الإدارة التقنية",      "tech",       None,    None),
     ("OWNER-01", "المالك",              "owner",      None,    None),
     ("CMD-01",   "غرفة القيادة",        "command",    None,    None),
     ("FN-01",    "المالية",             "finance",    None,    None),
@@ -56,8 +58,7 @@ def run():
                    VALUES (%s,%s,%s,%s,%s,%s) ON CONFLICT (employee_code) DO NOTHING""",
                 (code, name, role, hash_password(password), s["id"] if s else None, sp["id"] if sp else None),
             )
-        # Command and admin log in with a WhatsApp code: give the demo accounts a number if they have none.
-        # In WHATSAPP_MODE=console the code is printed in the server terminal. Change to real numbers before going live.
+        # Office numbers (no longer used for login codes since Phase 5; kept so the employee phone block works).
         for code, phone in (("CMD-01", "9647700000001"), ("ADMIN-01", "9647700000002"), ("OWNER-01", "9647700000003")):
             cur.execute("UPDATE employees SET phone = %s WHERE employee_code = %s AND phone IS NULL", (phone, code))
         # demo HR data (only fills empty values, never overwrites what HR entered)

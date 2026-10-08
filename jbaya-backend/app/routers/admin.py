@@ -139,7 +139,7 @@ def update_employee(employee_code: str, body: EmployeeUpdateIn, user: dict = Dep
         emp = cur.fetchone()
         if not emp:
             raise HTTPException(404, "الموظف غير موجود")
-        if emp["role"] in ("admin", "command") and user["role"] != "admin":
+        if emp["role"] in ("admin", "command", "tech", "owner") and user["role"] not in ("admin", "tech"):
             raise HTTPException(403, "تعديل حسابات القيادة والإدارة متاح لمدير النظام فقط")
         if body.full_name is not None:
             sets.append("full_name = %s"); args.append(body.full_name)

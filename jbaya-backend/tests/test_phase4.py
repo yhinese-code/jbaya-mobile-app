@@ -94,10 +94,13 @@ def test_visibility(client, collected):
         assert client.get(path, headers=own).status_code == 200, path
     assert client.get("/finance/overview", headers=fn).json()["profit_mtd"] is None
     assert client.get("/finance/overview", headers=own).json()["profit_mtd"]["income"] > 0
-    groups = {g["group"] for g in client.get("/finance/book", headers=fn).json()["groups"]}
-    assert "company" not in groups and {"place", "trust"} <= groups
-    assert "company" in {g["group"] for g in client.get("/finance/book", headers=own).json()["groups"]}
-    assert client.get("/finance/book/4100", headers=fn).status_code == 403
+    # Phase 5: finance sees the company's INCOME accounts (it handles that money) but never costs, capital or profit
+    book = client.get("/finance/book", headers=fn).json()["groups"]
+    fin_codes = {a["code"] for g in book for a in g["accounts"]}
+    assert {"4100", "4110"} <= fin_codes and not ({"3000", "5100", "5200", "5300", "5400"} & fin_codes)
+    assert client.get("/finance/book/4100", headers=fn).status_code == 200
+    assert client.get("/finance/book/5100", headers=fn).status_code == 403
+    assert "5100" in {a["code"] for g in client.get("/finance/book", headers=own).json()["groups"] for a in g["accounts"]}
     assert client.get("/finance/book/4100", headers=own).status_code == 200
     # performance: money for finance/command/owner, houses only for supervisor and collector
     assert client.get("/performance/collectors", headers=fn).status_code == 200
@@ -267,8 +270,12 @@ def test_performance_per_role(client, collected):
 
     coach = client.get("/collector/coach", headers=col).json()
     assert not any(w in k for k in coach for w in money_words)
-    assert coach["daily_target"] == me["breakeven_receipts_per_day"] and coach["messages"]
-    assert client.get("/collector/coach", headers=sp).status_code == 403
+    # Phase 5: no numbers at all for the collector, only a status and plain messages
+    assert coach["status"] in ("on_track", "behind", "underperforming") and coach["messages"]
+    assert not any(isinstance(v, (int, float)) and not isinstance(v, bool) for v in coach.values())
+    assert not any(ch.isdigit() for m in coach["messages"] for ch in m["text"])
+    assert team["banner"]["title"]
+    assert client.get("/collector/coach", headers=sp).status_code == 200      # supervisors collect too
 
     own = client.get("/owner/performance", headers=login(client, "OWNER-01")).json()
     assert own["company"]["monthly_staff_cost"] > 0 and own["company"]["receipts_needed_month"] >= 1
@@ -295,7 +302,9 @@ def test_losing_streak_flag(client, collected, monkeypatch):
     row = next(c for c in client.get("/supervisor/performance", headers=sp).json()["collectors"] if c["employee_code"] == "JB-0492")
     assert row["flag"] and "متأخر" in row["label"]
     coach = client.get("/collector/coach", headers=login(client, "JB-0492")).json()
-    assert any(m["level"] == "bad" for m in coach["messages"])
+    assert any(m["level"] == "bad" for m in coach["messages"]) and coach["status"] == "underperforming"
+    banner = client.get("/supervisor/performance", headers=sp).json()["banner"]
+    assert banner["level"] == "bad"
 
 
 # ---------------------------------------------------------------- analytics

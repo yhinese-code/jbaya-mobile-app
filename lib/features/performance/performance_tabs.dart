@@ -21,13 +21,41 @@ const _statusLabels = {
   'extra': 'عطلة بعمل إضافي',
 };
 
+/// Labels for the collector's own strip: no cost / money wording.
+const _coachStatusLabels = {
+  'profitable': 'يوم جيد',
+  'losing': 'يوم ضعيف',
+  'leave': 'إجازة',
+  'today': 'اليوم (جارٍ)',
+  'extra': 'عطلة بعمل إضافي',
+};
+
 /// A row of small day squares (green = covered his cost, red = didn't, blue = leave).
+/// With [showCounts] false (the collector's own card) the squares carry colours only: no counts anywhere.
 class DayStrip extends StatelessWidget {
   final List<Map> days;
-  const DayStrip({super.key, required this.days});
+  final bool showCounts;
+  const DayStrip({super.key, required this.days, this.showCounts = true});
 
   @override
   Widget build(BuildContext context) {
+    if (!showCounts) {
+      return Wrap(
+        spacing: 3,
+        runSpacing: 3,
+        children: days.map((d) {
+          final c = _statusColors[d['status']] ?? Colors.grey;
+          return Tooltip(
+            message: _coachStatusLabels[d['status']] ?? '',
+            child: Container(
+              width: 16,
+              height: 16,
+              decoration: BoxDecoration(color: c.withValues(alpha: d['status'] == 'today' ? 0.35 : 0.85), borderRadius: BorderRadius.circular(3)),
+            ),
+          );
+        }).toList(),
+      );
+    }
     return Wrap(
       spacing: 3,
       runSpacing: 3,
@@ -201,12 +229,15 @@ class TeamPerformanceTab extends StatelessWidget {
       builder: (context, d, reload) {
         final rows = (d['collectors'] as List).cast<Map>();
         final laggards = (asNum(d['laggards']) ?? 0).toInt();
+        final banner = d['banner'] is Map ? d['banner'] as Map : null;
         return RefreshIndicator(
           onRefresh: reload,
           child: ListView(
             padding: const EdgeInsets.all(12),
             children: [
-              if (laggards > 0)
+              if (banner != null)
+                _TeamBanner(banner)
+              else if (laggards > 0)
                 Card(
                   color: Colors.red.withValues(alpha: 0.08),
                   child: ListTile(
@@ -257,8 +288,61 @@ class TeamPerformanceTab extends StatelessWidget {
   }
 }
 
+/// The team's verdict at the top of the supervisor's performance tab (red when the team is under the required level).
+class _TeamBanner extends StatelessWidget {
+  final Map banner;
+  const _TeamBanner(this.banner);
+
+  @override
+  Widget build(BuildContext context) {
+    final level = '${banner['level']}';
+    final Color color;
+    final IconData icon;
+    switch (level) {
+      case 'bad':
+        color = const Color(0xFFC62828);
+        icon = Icons.report;
+        break;
+      case 'warn':
+        color = const Color(0xFFEF6C00);
+        icon = Icons.warning_amber_rounded;
+        break;
+      default:
+        color = const Color(0xFF2E7D32);
+        icon = Icons.verified;
+    }
+    final title = '${banner['title'] ?? (level == 'bad' ? 'فريقك دون المستوى المطلوب' : '')}';
+    final text = banner['text'] == null ? '' : '${banner['text']}';
+    return Card(
+      color: color.withValues(alpha: level == 'bad' ? 0.14 : 0.08),
+      shape: RoundedRectangleBorder(
+        side: BorderSide(color: color, width: level == 'bad' ? 2 : 1),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Icon(icon, color: color, size: 36),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color)),
+              if (text.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(text, style: const TextStyle(fontSize: 14)),
+              ],
+            ]),
+          ),
+        ]),
+      ),
+    );
+  }
+}
+
 // ================================================================ collector: his own coaching card
 
+/// The collector's (and field supervisor's) own card: on track / behind / underperforming.
+/// Deliberately shows NO numbers: only a colour, a title, the server's messages and a colour-only day strip.
 class CoachCard extends StatefulWidget {
   const CoachCard({super.key});
 
@@ -279,44 +363,67 @@ class CoachCardState extends State<CoachCard> {
   Future<void> reload() async {
     try {
       final c = await ApiClient.instance.get('/collector/coach');
-      if (mounted) setState(() => _c = c as Map);
+      if (mounted && c is Map) setState(() => _c = c);
     } on ApiException catch (_) {
       // informational only
     }
   }
 
-  static const _levelColors = {'good': Colors.green, 'info': Colors.blue, 'warn': Colors.orange, 'bad': Colors.red};
+  static const _levelColors = {
+    'good': Color(0xFF2E7D32),
+    'info': Color(0xFF1565C0),
+    'warn': Color(0xFFEF6C00),
+    'bad': Color(0xFFC62828),
+  };
 
   @override
   Widget build(BuildContext context) {
     final c = _c;
-    if (c == null || c['daily_target'] == null) return const SizedBox.shrink();
-    final target = (asNum(c['daily_target']) ?? 0).toInt();
-    final today = (asNum(c['today_receipts']) ?? 0).toInt();
-    final msgs = (c['messages'] as List).cast<Map>();
-    final worst = msgs.any((m) => m['level'] == 'bad') ? 'bad' : (msgs.any((m) => m['level'] == 'warn') ? 'warn' : (today >= target ? 'good' : 'info'));
-    final color = _levelColors[worst] ?? Colors.blue;
+    if (c == null || c['status'] == null) return const SizedBox.shrink();
+    final status = '${c['status']}';
+    final Color color;
+    final IconData icon;
+    switch (status) {
+      case 'underperforming':
+        color = const Color(0xFFC62828);
+        icon = Icons.error;
+        break;
+      case 'behind':
+        color = const Color(0xFFF9A825);
+        icon = Icons.trending_down;
+        break;
+      default:
+        color = const Color(0xFF2E7D32);
+        icon = Icons.check_circle;
+    }
+    final msgs = (c['messages'] is List ? c['messages'] as List : const []).whereType<Map>().toList();
+    final days = (c['days'] is List ? c['days'] as List : const []).whereType<Map>().toList();
     return Material(
-      color: color.withValues(alpha: 0.07),
+      color: color.withValues(alpha: 0.10),
       child: InkWell(
         onTap: () => setState(() => _open = !_open),
-        child: Padding(
+        child: Container(
+          decoration: BoxDecoration(border: BorderDirectional(start: BorderSide(color: color, width: 5))),
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
-              Icon(Icons.flag_circle, color: color),
+              Icon(icon, color: color),
               const SizedBox(width: 8),
-              Expanded(child: Text('هدفك اليوم: $today من ${housesAr(target)}', style: TextStyle(fontWeight: FontWeight.bold, color: color))),
-              Text('معدل الفريق ${c['team_avg']}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+              Expanded(
+                child: Text('${c['title'] ?? ''}', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: color)),
+              ),
               Icon(_open ? Icons.expand_less : Icons.expand_more, color: Colors.grey),
             ]),
-            const SizedBox(height: 4),
-            LinearProgressIndicator(value: target > 0 ? (today / target).clamp(0.0, 1.0).toDouble() : 0, minHeight: 6, color: color),
-            if (_open)
+            if (_open) ...[
               ...msgs.map((m) => Padding(
                     padding: const EdgeInsets.only(top: 4),
-                    child: Text('• ${m['text']}', style: TextStyle(color: _levelColors[m['level']] ?? Colors.black87, fontSize: 13)),
+                    child: Text('• ${m['text'] ?? ''}', style: TextStyle(color: _levelColors[m['level']] ?? Colors.black87, fontSize: 13)),
                   )),
+              if (days.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                DayStrip(days: days, showCounts: false),
+              ],
+            ],
           ]),
         ),
       ),

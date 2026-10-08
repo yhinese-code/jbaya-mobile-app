@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/api_client.dart';
 import '../../../core/format.dart';
 
-/// Today's progress for the collector: collected vs target, cash in hand vs the cap.
+/// Today's figures for the collector: what he collected, cash in hand vs the cap (no targets).
 class SummaryBar extends StatefulWidget {
   const SummaryBar({super.key});
 
@@ -34,7 +34,6 @@ class SummaryBarState extends State<SummaryBar> {
     final s = _s;
     if (s == null) return const LinearProgressIndicator(minHeight: 2);
     final collected = (asNum(s['collected_today']) ?? 0).toDouble();
-    final target = (asNum(s['daily_target']) ?? 0).toDouble();
     final cash = (asNum(s['cash_in_hand']) ?? 0).toDouble();
     final cap = (asNum(s['cash_cap']) ?? 1).toDouble();
     final cashRatio = cap <= 0 ? 0.0 : (cash / cap).clamp(0.0, 1.0);
@@ -47,12 +46,14 @@ class SummaryBarState extends State<SummaryBar> {
         children: [
           Row(
             children: [
+              // No daily target here: the collector never sees performance targets as numbers.
               Expanded(
-                child: _meter(
-                  'المحصّل اليوم',
-                  '${formatIqd(collected)} / ${formatIqd(target)}',
-                  target <= 0 ? 0 : (collected / target).clamp(0.0, 1.0),
-                  Colors.green,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('المحصّل اليوم', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                    Text(formatIqd(collected), style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green, fontSize: 13)),
+                  ],
                 ),
               ),
               const SizedBox(width: 16),

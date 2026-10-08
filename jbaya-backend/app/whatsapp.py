@@ -61,6 +61,20 @@ def _send_template(phone: str, template: str, components: list, console_text: st
     _log(phone, template, preview, "sent", provider_id=msg_id)
 
 
+# The text each Meta template must be approved with (the tech panel shows it; Meta keeps the real copy).
+TEMPLATE_TEXT = {
+    # Meta writes the body of Authentication templates itself (only the code + an optional security line), so the
+    # instruction to read the code to the employee goes in the bill notice that arrives just before it.
+    "otp": "{{1}} هو رمز التحقق الخاص بك. لأمانك، لا تشارك هذا الرمز. (نص ثابت من ميتا لقوالب المصادقة)",
+    "bill_notice": "عزيزي {{1}}، المبلغ المستحق للعقار {{2}} هو {{3}} د.ع (رسوم الاستهلاك {{4}} + أجور الجباية {{5}}).\n"
+                   "سيصلك الآن رمز تحقق: اقرأه لموظف الجباية الذي أمامك فقط.\n"
+                   "لا تدفع أكثر من هذا المبلغ. الموظف: {{6}}. للشكاوى: {{7}}",
+    "receipt": "عزيزي {{1}}، تم استلام {{3}} د.ع للعقار {{4}}. رقم الوصل {{2}} بتاريخ {{5}}.\n"
+               "لا تدفع أكثر من المبلغ المذكور في هذا الوصل. إذا طُلب منك مبلغ أكبر اتصل على {{6}}",
+}
+TEMPLATE_KIND = {"otp": "authentication", "bill_notice": "utility", "receipt": "utility"}
+
+
 def _text(value) -> dict:
     return {"type": "text", "text": str(value)}
 
@@ -71,7 +85,7 @@ def send_otp(phone: str, code: str) -> None:
         {"type": "body", "parameters": [_text(code)]},
         {"type": "button", "sub_type": "url", "index": "0", "parameters": [_text(code)]},
     ]
-    console = f"رمز التحقق الخاص بك هو {code}. لا تشارك هذا الرمز إلا مع الجابي المعتمد عند الدفع."
+    console = f"{code} هو رمز التحقق الخاص بك. اقرأه لموظف الجباية الذي أمامك فقط."
     _send_template(phone, settings.WA_TEMPLATE_OTP, components, console, preview="OTP (hidden)")
 
 
@@ -81,12 +95,9 @@ def send_bill_notice(phone: str, *, name: str, property_code: str, total: float,
     {{1}} name, {{2}} property code, {{3}} total, {{4}} consumption fee, {{5}} company fee, {{6}} collector, {{7}} hotline"""
     params = [name, property_code, fmt_iqd(total), fmt_iqd(gov), fmt_iqd(fee), collector_code, settings.HOTLINE]
     components = [{"type": "body", "parameters": [_text(p) for p in params]}]
-    console = (
-        f"عزيزي {name}،\n"
-        f"المبلغ المستحق للعقار {property_code} هو {fmt_iqd(total)} د.ع "
-        f"(رسوم الاستهلاك {fmt_iqd(gov)} + أجور الجباية {fmt_iqd(fee)}).\n"
-        f"لا تدفع أكثر من هذا المبلغ. الجابي: {collector_code}. للشكاوى: {settings.HOTLINE}"
-    )
+    console = TEMPLATE_TEXT["bill_notice"]
+    for i, p in enumerate(params, 1):
+        console = console.replace("{{%d}}" % i, str(p))
     _send_template(phone, settings.WA_TEMPLATE_BILL_NOTICE, components, console, preview=json.dumps(params, ensure_ascii=False))
 
 
@@ -95,9 +106,7 @@ def send_receipt(phone: str, *, name: str, receipt_no: str, property_code: str, 
     {{1}} name, {{2}} receipt no, {{3}} total, {{4}} property code, {{5}} date, {{6}} hotline"""
     params = [name, receipt_no, fmt_iqd(total), property_code, date_str, settings.HOTLINE]
     components = [{"type": "body", "parameters": [_text(p) for p in params]}]
-    console = (
-        f"عزيزي {name}، تم استلام {fmt_iqd(total)} د.ع للعقار {property_code}.\n"
-        f"رقم الوصل: {receipt_no} بتاريخ {date_str}.\n"
-        f"إذا دفعت مبلغاً أكبر يرجى الاتصال على {settings.HOTLINE}"
-    )
+    console = TEMPLATE_TEXT["receipt"]
+    for i, p in enumerate(params, 1):
+        console = console.replace("{{%d}}" % i, str(p))
     _send_template(phone, settings.WA_TEMPLATE_RECEIPT, components, console, preview=json.dumps(params, ensure_ascii=False))

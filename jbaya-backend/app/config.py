@@ -89,10 +89,41 @@ class Settings:
     PING_ONLINE_SECONDS = _int("PING_ONLINE_SECONDS", 300)        # online if a ping arrived within 5 min
     MAX_PLAUSIBLE_SPEED_MPS = _float("MAX_PLAUSIBLE_SPEED_MPS", 41.7)  # 150 km/h between two fixes = suspicious
     MAX_PINGS_PER_REQUEST = _int("MAX_PINGS_PER_REQUEST", 120)
-    TWO_FACTOR_ROLES = [r.strip() for r in _str("TWO_FACTOR_ROLES", "command,admin,owner").split(",") if r.strip()]
+    TWO_FACTOR_ROLES: list = []            # Phase 5: employees no longer get WhatsApp login codes (devices are approved instead)
     COMMAND_SESSION_HOURS = _int("COMMAND_SESSION_HOURS", 8)
     COMMAND_IP_ALLOWLIST = [x.strip() for x in _str("COMMAND_IP_ALLOWLIST", "").split(",") if x.strip()]
     ENFORCE_GEOFENCE = _str("ENFORCE_GEOFENCE", "true").lower() == "true"
+
+    # --- Phase 5: devices, sessions, tech panel ---
+    # A new phone/PC must be approved once in the tech panel before it can log in; then it is bound to that account.
+    DEVICE_APPROVAL_REQUIRED = _str("DEVICE_APPROVAL_REQUIRED", "true").lower() == "true"
+    # how many approved devices each role may have at the same time
+    DEVICE_LIMITS = {k.strip(): int(v) for k, v in (x.split(":") for x in _str(
+        "DEVICE_LIMITS", "collector:1,supervisor:1,finance:2,hr:2,command:2,owner:2,admin:2,tech:3").split(",") if ":" in x)}
+    IP_RESTRICTED_ROLES = [r.strip() for r in _str("IP_RESTRICTED_ROLES", "command,admin").split(",") if r.strip()]
+    DAILY_LOGOUT_AT = _str("DAILY_LOGOUT_AT", "00:00")         # local time every session ends
+
+    # --- Phase 5: switches (tech panel can flip them at runtime) ---
+    COLLECTION_ENABLED = _str("COLLECTION_ENABLED", "true").lower() == "true"
+    REGISTRATION_ENABLED = _str("REGISTRATION_ENABLED", "true").lower() == "true"
+    MASTER_CODE_ENABLED = _str("MASTER_CODE_ENABLED", "true").lower() == "true"
+    ESTIMATES_ENABLED = _str("ESTIMATES_ENABLED", "true").lower() == "true"
+    MAINTENANCE_MODE = _str("MAINTENANCE_MODE", "false").lower() == "true"   # read-only for everyone except tech
+
+    # --- Phase 5: citizen-number fraud protocol ---
+    PHONE_HARD_LIMIT_PROPERTIES = _int("PHONE_HARD_LIMIT_PROPERTIES", 10)   # above this a number is refused
+    FAST_OTP_SECONDS = _int("FAST_OTP_SECONDS", 8)          # a code typed faster than this after sending is flagged
+    PHONE_SPREAD_KM = _float("PHONE_SPREAD_KM", 3)          # one number on houses further apart than this is flagged
+    CALLBACK_DAILY_SAMPLE = _int("CALLBACK_DAILY_SAMPLE", 10)   # random receipts per day for Command to call back
+
+    # --- Phase 5: the 35% rule (company share of the increase in collections) ---
+    # not_set = show estimates only | baseline_2025 = % of collection above the same month of 2025 (settled monthly)
+    # per_house = % of how much each bill is above that house's previous bill (booked on each receipt)
+    GAIN_SHARE_MODE = _str("GAIN_SHARE_MODE", "not_set")
+    GAIN_SHARE_PCT = _float("GAIN_SHARE_PCT", 35)
+    PREV_BILL_OUTLIER_FACTOR = _float("PREV_BILL_OUTLIER_FACTOR", 3.0)   # previous bill this many x the class average = flagged
+
+    WHATSAPP_COST_USD = _float("WHATSAPP_COST_USD", 0.0079)    # per message, for the cost counter
 
     # --- WhatsApp Business (Meta Cloud API) ---
     # console = print messages in the server terminal (development)

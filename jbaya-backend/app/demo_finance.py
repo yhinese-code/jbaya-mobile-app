@@ -185,7 +185,7 @@ def main():
             cur.execute("INSERT INTO cash_transfers (direction, amount, reference, note, created_by, created_at) "
                         "VALUES ('to_bank', %s, 'DEMO', 'بيانات تجريبية', %s, %s)",
                         (h["counted_cash"], fin, h["created_at"] + timedelta(hours=20)))
-        cur.execute("SELECT COALESCE(SUM(gov_amount - company_share), 0) AS t FROM receipts WHERE issued_at < NOW() - INTERVAL '14 days'")
+        cur.execute("SELECT COALESCE(SUM(gov_amount - company_share - gain_share), 0) AS t FROM receipts WHERE issued_at < NOW() - INTERVAL '14 days'")
         trust = float(cur.fetchone()["t"])
         cur.execute("SELECT COALESCE(SUM(amount), 0) AS b FROM cash_transfers")
         banked = float(cur.fetchone()["b"])

@@ -18,6 +18,8 @@ class HandToFinanceTab extends StatelessWidget {
           builder: (context, c, reload) {
             final cash = (asNum(c['cash_to_hand_over']) ?? 0).toDouble();
             final pending = (asNum(c['reconciliations_pending_resolution']) ?? 0).toInt();
+            final own = (asNum(c['own_collection']) ?? 0).toDouble();
+            final ownReceipts = (asNum(c['own_receipts']) ?? 0).toInt();
             return Card(
               color: cash > 0 ? Colors.orange.withValues(alpha: 0.08) : null,
               child: Padding(
@@ -26,6 +28,9 @@ class HandToFinanceTab extends StatelessWidget {
                   const Text('النقد بحوزتك لتسليمه للمالية', style: TextStyle(color: Colors.grey)),
                   Text(formatIqd(cash), style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold)),
                   Text('من ${c['reconciliations_ready']} تسليم من الجباة'),
+                  if (own > 0 || ownReceipts > 0)
+                    Text('من جبايتك الخاصة: ${formatIqd(own)} ($ownReceipts وصل)',
+                        style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.teal)),
                   if (pending > 0)
                     Text('لديك $pending فروقات لم تعالجها بعد؛ عالجها في «المطابقة النقدية» قبل الذهاب للمقر.',
                         style: const TextStyle(color: Colors.red)),

@@ -9,5 +9,7 @@ os.environ["DB_CONN"] = TEST_DB
 os.environ["WHATSAPP_MODE"] = "console"
 os.environ["OTP_RESEND_COOLDOWN_SECONDS"] = "0"
 os.environ["REQUIRE_METER_PHOTO"] = "false"
+os.environ["DEVICE_APPROVAL_REQUIRED"] = "false"   # test_phase5 switches it on
+os.environ["FAST_OTP_SECONDS"] = "0"
 os.environ["STORAGE_DIR"] = os.path.join(tempfile.gettempdir(), "jbaya-test-storage")
 sys.path.insert(0, os.path.dirname(__file__))

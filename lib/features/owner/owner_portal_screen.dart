@@ -6,61 +6,49 @@ import '../../core/session.dart';
 import '../finance/cash_tabs.dart';
 import '../finance/charts.dart';
 import '../finance/fraud_tabs.dart';
+import '../finance/gain_share_tab.dart';
 import '../finance/overview_tabs.dart';
 import '../hr/hr_tabs.dart' show currentPeriod, recentPeriods;
 import '../performance/performance_tabs.dart';
 import '../shared/ui.dart';
+import 'owner_settings_tab.dart';
+import 'owner_today_tab.dart';
 
 const _ownerColor = Color(0xFF263238);
 
-/// The owner: profit, breakeven, approvals of large write-offs / corrections, and everything finance did.
+/// The owner: his day, profit, breakeven, approvals of large write-offs / corrections / 35% settlements, his own
+/// settings, and everything finance did. Each tab follows the tech panel's permission matrix (owner.* features).
 class OwnerPortalScreen extends StatelessWidget {
   const OwnerPortalScreen({super.key});
 
   static const _tabs = [
-    Tab(icon: Icon(Icons.insights), text: 'الملخص'),
-    Tab(icon: Icon(Icons.approval), text: 'الموافقات'),
-    Tab(icon: Icon(Icons.savings), text: 'الربح والخسارة'),
-    Tab(icon: Icon(Icons.balance), text: 'الأداء والتعادل'),
-    Tab(icon: Icon(Icons.today), text: 'التحصيل'),
-    Tab(icon: Icon(Icons.menu_book), text: 'كل الحسابات'),
-    Tab(icon: Icon(Icons.history_edu), text: 'سجل المالية'),
-    Tab(icon: Icon(Icons.gpp_maybe), text: 'كشف التلاعب'),
-    Tab(icon: Icon(Icons.trending_up), text: 'التنبؤ'),
-    Tab(icon: Icon(Icons.hourglass_bottom), text: 'المتأخرات'),
+    PortalTab('owner.summary', Tab(icon: Icon(Icons.wb_sunny), text: 'يومي'), OwnerTodayTab()),
+    PortalTab('owner.summary', Tab(icon: Icon(Icons.insights), text: 'الملخص'), OwnerSummaryTab()),
+    PortalTab('owner.approvals', Tab(icon: Icon(Icons.approval), text: 'الموافقات'), ApprovalsTab()),
+    PortalTab('owner.pnl', Tab(icon: Icon(Icons.savings), text: 'الربح والخسارة'), ProfitTab()),
+    PortalTab('owner.performance', Tab(icon: Icon(Icons.balance), text: 'الأداء والتعادل'),
+        PerformanceMoneyTab(path: '/owner/performance')),
+    PortalTab('owner.gain_share', Tab(icon: Icon(Icons.percent), text: 'صيغة الـ35%'), GainShareTab()),
+    PortalTab('owner.collection', Tab(icon: Icon(Icons.today), text: 'التحصيل'), FinanceOverviewTab()),
+    PortalTab('owner.accounts', Tab(icon: Icon(Icons.menu_book), text: 'كل الحسابات'), BookTab()),
+    PortalTab('owner.finance_log', Tab(icon: Icon(Icons.history_edu), text: 'سجل المالية'), FinanceLogTab()),
+    PortalTab('owner.fraud', Tab(icon: Icon(Icons.gpp_maybe), text: 'كشف التلاعب'), FraudTab()),
+    PortalTab('owner.forecast', Tab(icon: Icon(Icons.trending_up), text: 'التنبؤ'), ForecastTab()),
+    PortalTab('owner.arrears', Tab(icon: Icon(Icons.hourglass_bottom), text: 'المتأخرات'), AgingTab()),
+    PortalTab('owner.settings', Tab(icon: Icon(Icons.tune), text: 'إعداداتي'), OwnerSettingsTab()),
   ];
 
   @override
   Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: _tabs.length,
-      child: Scaffold(
-        appBar: AppBar(
-          title: Text('لوحة المالك - ${Session.instance.fullName}', style: const TextStyle(fontWeight: FontWeight.bold)),
-          backgroundColor: _ownerColor,
-          foregroundColor: Colors.white,
-          actions: const [LogoutButton()],
-          bottom: const TabBar(
-            isScrollable: true,
-            tabAlignment: TabAlignment.start,
-            labelColor: Colors.white,
-            unselectedLabelColor: Colors.white70,
-            indicatorColor: Colors.amber,
-            tabs: _tabs,
-          ),
-        ),
-        body: const TabBarView(children: [
-          OwnerSummaryTab(),
-          ApprovalsTab(),
-          ProfitTab(),
-          PerformanceMoneyTab(path: '/owner/performance'),
-          FinanceOverviewTab(),
-          BookTab(),
-          FinanceLogTab(),
-          FraudTab(),
-          ForecastTab(),
-          AgingTab(),
-        ]),
+    return PermittedTabs(
+      tabs: _tabs,
+      indicator: Colors.amber,
+      appBar: (bar) => AppBar(
+        title: Text('لوحة المالك - ${Session.instance.fullName}', style: const TextStyle(fontWeight: FontWeight.bold)),
+        backgroundColor: _ownerColor,
+        foregroundColor: Colors.white,
+        actions: const [LogoutButton()],
+        bottom: bar,
       ),
     );
   }
@@ -103,7 +91,8 @@ class OwnerSummaryTab extends StatelessWidget {
                 KpiCard(
                   label: 'دخل الشركة هذا الشهر',
                   value: formatIqd(asNum(cur['income'])),
-                  sub: 'أجور ${compactIqd((asNum(cur['fees']) ?? 0).toDouble())} + حصة ${compactIqd((asNum(cur['share']) ?? 0).toDouble())} (${d['company_share_pct']}%)',
+                  sub: 'أجور ${compactIqd((asNum(cur['fees']) ?? 0).toDouble())} + حصة ${compactIqd((asNum(cur['share']) ?? 0).toDouble())} (${d['company_share_pct']}%)'
+                      ' + زيادة ${compactIqd((asNum(cur['gain_share']) ?? 0).toDouble())}',
                   icon: Icons.account_balance_wallet,
                   color: Colors.indigo,
                 ),
@@ -144,6 +133,39 @@ class OwnerSummaryTab extends StatelessWidget {
                   ]),
                 ),
               ),
+              const SectionTitle('دخل الشركة حسب المصدر'),
+              Card(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: DataTable(
+                    columnSpacing: 20,
+                    headingRowHeight: 40,
+                    dataRowMinHeight: 36,
+                    dataRowMaxHeight: 40,
+                    columns: const [
+                      DataColumn(label: Text('الشهر')),
+                      DataColumn(label: Text('أجور الجباية'), numeric: true),
+                      DataColumn(label: Text('الحصة'), numeric: true),
+                      DataColumn(label: Text('حصة الزيادة (35%)'), numeric: true),
+                      DataColumn(label: Text('مجموع الدخل'), numeric: true),
+                      DataColumn(label: Text('الربح'), numeric: true),
+                    ],
+                    rows: [
+                      for (final m in months.reversed)
+                        DataRow(cells: [
+                          DataCell(Text('${m['period']}')),
+                          DataCell(Text(compactIqd((asNum(m['fees']) ?? 0).toDouble()))),
+                          DataCell(Text(compactIqd((asNum(m['share']) ?? 0).toDouble()))),
+                          DataCell(Text(compactIqd((asNum(m['gain_share']) ?? 0).toDouble()),
+                              style: const TextStyle(color: Colors.indigo, fontWeight: FontWeight.bold))),
+                          DataCell(Text(compactIqd((asNum(m['income']) ?? 0).toDouble()))),
+                          DataCell(Text(compactIqd((asNum(m['profit']) ?? 0).toDouble()),
+                              style: TextStyle(color: (asNum(m['profit']) ?? 0) >= 0 ? Colors.green : Colors.red))),
+                        ]),
+                    ],
+                  ),
+                ),
+              ),
               const SectionTitle('القواطع: دخل الشركة هذا الشهر'),
               Card(
                 child: Padding(
@@ -174,6 +196,13 @@ class OwnerSummaryTab extends StatelessWidget {
 }
 
 // ================================================================ approvals
+
+const Map<String, String> _kindLabels = {
+  'journal': 'تصحيح يدوي',
+  'reconciliation': 'شطب جابي',
+  'handover': 'شطب مشرف',
+  'gain_share': 'تسوية صيغة الـ35%',
+};
 
 class ApprovalsTab extends StatefulWidget {
   const ApprovalsTab({super.key});
@@ -211,10 +240,16 @@ class _ApprovalsTabState extends State<ApprovalsTab> {
                       padding: const EdgeInsets.all(12),
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         Row(children: [
-                          Expanded(child: Text('${a['title']}', style: const TextStyle(fontWeight: FontWeight.bold))),
+                          StatusChip(_kindLabels['${a['kind']}'] ?? '${a['kind']}',
+                              a['kind'] == 'gain_share' ? Colors.indigo : Colors.blueGrey),
+                          const SizedBox(width: 8),
+                          Expanded(child: Text('${a['title'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.bold))),
                           Text(formatIqd(asNum(a['amount'])), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                         ]),
                         if (a['detail'] != null) Text('${a['detail']}', style: const TextStyle(color: Colors.grey)),
+                        if (a['kind'] == 'gain_share')
+                          const Text('موافقتك تقيّد هذا المبلغ دخلاً للشركة (حصة الزيادة فوق إيرادات 2025).',
+                              style: TextStyle(fontSize: 12, color: Colors.indigo)),
                         Text('${formatDate(a['at'])}${a['requested_by'] != null ? ' | طلبه ${a['requested_by']}' : ''}',
                             style: const TextStyle(fontSize: 12, color: Colors.grey)),
                         Wrap(spacing: 8, children: [

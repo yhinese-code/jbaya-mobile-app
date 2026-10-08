@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/device_identity.dart';
 import '../../core/session.dart';
 import '../collector/collector_home.dart';
 import '../command/command_screen.dart';
@@ -8,10 +11,15 @@ import '../finance/finance_portal_screen.dart';
 import '../hr/hr_portal_screen.dart';
 import '../owner/owner_portal_screen.dart';
 import '../supervisor/supervisor_screen.dart';
+import '../tech/tech_portal_screen.dart';
 
 /// One login for every role. The server decides the role and (for collectors) the sector.
+/// No WhatsApp codes for employees: a new phone / PC waits once for the tech panel's approval and is then bound
+/// to this account. Sessions end every day at midnight (Baghdad time).
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+  /// Why the previous session ended (shown once), e.g. the daily logout or a session ended by the tech panel.
+  final String? notice;
+  const LoginScreen({super.key, this.notice});
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -24,81 +32,84 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _obscure = true;
   String? _error;
 
-  // two-factor step (Command / admin): code sent to the employee's own WhatsApp
-  Map<String, dynamic>? _challenge;
-  final _codeInput = TextEditingController();
+  // a new device waiting for the tech panel: retried automatically every 15 seconds
+  String? _pending;
+  Timer? _retry;
+  String? _deviceId;
+  bool _inFlight = false;   // the silent retry and the button must never log in twice at once
+
+  @override
+  void initState() {
+    super.initState();
+    _error = widget.notice;
+    DeviceIdentity.id().then((v) {
+      if (mounted) setState(() => _deviceId = v);
+    });
+  }
 
   @override
   void dispose() {
+    _retry?.cancel();
     _codeController.dispose();
     _passwordController.dispose();
-    _codeInput.dispose();
     super.dispose();
   }
 
-  Future<void> _login() async {
+  Future<void> _login({bool silent = false}) async {
     if (_codeController.text.trim().isEmpty || _passwordController.text.isEmpty) {
       setState(() => _error = 'يرجى إدخال رقم الموظف وكلمة المرور');
       return;
     }
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+    if (_inFlight) return;
+    _inFlight = true;
+    if (!silent) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
     try {
       final res = await ApiClient.instance.post('/auth/login', {
         'employee_code': _codeController.text.trim(),
         'password': _passwordController.text,
+        'device_id': await DeviceIdentity.id(),
+        'device_label': DeviceIdentity.label,
+        'platform': DeviceIdentity.platform,
       });
       if (!mounted) return;
-      if (res['two_factor_required'] == true) {
-        setState(() => _challenge = Map<String, dynamic>.from(res as Map));
+      if (res['device_pending'] == true) {
+        setState(() => _pending = (res['message'] ?? 'بانتظار موافقة الإدارة التقنية').toString());
+        _retry ??= Timer.periodic(const Duration(seconds: 15), (_) => _login(silent: true));
         return;
       }
+      _retry?.cancel();
+      _retry = null;
       _finish(res);
     } on ApiException catch (e) {
       if (!mounted) return;
-      setState(() => _error = e.message);
+      if (silent && _pending != null && e.statusCode == 0) return;   // no network for a moment: keep waiting
+      _retry?.cancel();
+      _retry = null;
+      setState(() {
+        _pending = null;
+        _error = e.message;
+      });
     } finally {
-      if (mounted) setState(() => _loading = false);
+      _inFlight = false;
+      if (mounted && !silent) setState(() => _loading = false);
     }
+  }
+
+  void _cancelPending() {
+    _retry?.cancel();
+    _retry = null;
+    setState(() => _pending = null);
   }
 
   void _finish(dynamic res) {
     final user = Map<String, dynamic>.from(res['user'] as Map);
     Session.instance.start(res['token'] as String, user);
     _openPortal(user['role'] as String);
-  }
-
-  Future<void> _verifyCode() async {
-    if (_codeInput.text.trim().length < 4) {
-      setState(() => _error = 'يرجى إدخال الرمز');
-      return;
-    }
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    try {
-      final res = await ApiClient.instance.post('/auth/verify-2fa', {
-        'challenge_id': _challenge!['challenge_id'],
-        'code': _codeInput.text.trim(),
-      });
-      if (!mounted) return;
-      _finish(res);
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _error = e.message;
-        // the server cancels the challenge after too many attempts or on expiry: start again
-        if (e.message.contains('من جديد')) {
-          _challenge = null;
-          _codeInput.clear();
-        }
-      });
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
   }
 
   void _openPortal(String role) {
@@ -122,6 +133,9 @@ class _LoginScreenState extends State<LoginScreen> {
       case 'command':
       case 'admin':
         next = const CentralCommandScreen();
+        break;
+      case 'tech':
+        next = const TechPortalScreen();
         break;
       default:
         setState(() => _error = 'لا توجد بوابة لهذا الدور');
@@ -157,7 +171,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF004D40)),
                 ),
                 const SizedBox(height: 24),
-                if (_challenge != null) ..._twoFactorStep() else ...[
+                if (_pending != null) ..._pendingStep() else ...[
                 TextField(
                   controller: _codeController,
                   textInputAction: TextInputAction.next,
@@ -205,6 +219,11 @@ class _LoginScreenState extends State<LoginScreen> {
                   textAlign: TextAlign.center,
                   style: TextStyle(color: Colors.grey, fontSize: 12),
                 ),
+                if (_deviceId != null) ...[
+                  const SizedBox(height: 6),
+                  Text('رمز هذا الجهاز: ${_deviceId!.substring(0, 12)}',
+                      textAlign: TextAlign.center, style: const TextStyle(color: Colors.grey, fontSize: 11)),
+                ],
                 ],
               ],
             ),
@@ -214,62 +233,41 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  List<Widget> _twoFactorStep() {
+  List<Widget> _pendingStep() {
     return [
       Container(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: const Color(0xFF1B3B6F).withValues(alpha: 0.06),
+          color: Colors.amber.shade50,
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: const Color(0xFF1B3B6F).withValues(alpha: 0.3)),
+          border: Border.all(color: Colors.amber.shade700),
         ),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Icon(Icons.verified_user, color: Color(0xFF1B3B6F)),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text('تحقق بخطوتين: أرسلنا رمزاً إلى واتساب ${_challenge!['phone_masked']}'),
-            ),
+            Row(children: [
+              Icon(Icons.phonelink_lock, color: Colors.amber.shade900),
+              const SizedBox(width: 8),
+              const Expanded(child: Text('جهاز جديد بانتظار الاعتماد', style: TextStyle(fontWeight: FontWeight.bold))),
+            ]),
+            const SizedBox(height: 8),
+            Text(_pending!),
+            const SizedBox(height: 8),
+            Text('أخبر الإدارة التقنية برقمك ${_codeController.text.trim().toUpperCase()} '
+                'ورمز الجهاز ${_deviceId == null ? '' : _deviceId!.substring(0, 12)}. '
+                'سيتم الدخول تلقائياً بعد الموافقة.', style: const TextStyle(fontSize: 13)),
           ],
         ),
       ),
       const SizedBox(height: 16),
-      TextField(
-        controller: _codeInput,
-        autofocus: true,
-        keyboardType: TextInputType.number,
-        maxLength: 6,
-        textAlign: TextAlign.center,
-        onSubmitted: (_) => _verifyCode(),
-        style: const TextStyle(fontSize: 24, letterSpacing: 8, fontWeight: FontWeight.bold),
-        decoration: const InputDecoration(labelText: 'رمز التحقق', border: OutlineInputBorder(), counterText: ''),
-      ),
-      if (_error != null) ...[
-        const SizedBox(height: 8),
-        Text(_error!, style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
-      ],
+      const LinearProgressIndicator(),
       const SizedBox(height: 16),
-      ElevatedButton(
-        onPressed: _loading ? null : _verifyCode,
-        style: ElevatedButton.styleFrom(
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          backgroundColor: const Color(0xFF1B3B6F),
-          foregroundColor: Colors.white,
-        ),
-        child: _loading
-            ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-            : const Text('تأكيد الدخول', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+      ElevatedButton.icon(
+        onPressed: _loading ? null : _login,
+        icon: const Icon(Icons.refresh),
+        label: const Text('تحقق الآن'),
       ),
-      TextButton(
-        onPressed: _loading
-            ? null
-            : () => setState(() {
-                  _challenge = null;
-                  _codeInput.clear();
-                  _error = null;
-                }),
-        child: const Text('رجوع'),
-      ),
+      TextButton(onPressed: _cancelPending, child: const Text('رجوع')),
     ];
   }
 }

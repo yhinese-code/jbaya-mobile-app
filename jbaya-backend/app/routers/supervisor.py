@@ -6,7 +6,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from .. import audit
+from .. import audit, fieldwork
 from ..db import dict_cursor, get_conn
 from ..config import settings
 from ..security import require_roles
@@ -34,6 +34,15 @@ def _team_filter(user: dict) -> tuple[str, tuple]:
     return "e.supervisor_id = %s", (user["id"],)
 
 
+def _review_filter(user: dict) -> tuple[str, tuple]:
+    """Bill reviews: his team's bills, plus bills of other FIELD SUPERVISORS who have no supervisor above them
+    (peer review — nobody approves his own estimate or lower reading)."""
+    if user["role"] in ("admin", "tech"):
+        return "TRUE", ()
+    return ("(e.supervisor_id = %s OR (e.role = 'supervisor' AND e.supervisor_id IS NULL AND e.id <> %s))",
+            (user["id"], user["id"]))
+
+
 @router.get("/collectors")
 def my_collectors(user: dict = Depends(supervisor_only)):
     cond, args = _team_filter(user)
@@ -52,7 +61,7 @@ def my_collectors(user: dict = Depends(supervisor_only)):
 
 @router.get("/reviews")
 def review_queue(user: dict = Depends(supervisor_only)):
-    cond, args = _team_filter(user)
+    cond, args = _review_filter(user)
     with get_conn() as conn, dict_cursor(conn) as cur:
         cur.execute(
             f"""SELECT b.id, b.status, b.billing_method, b.visit_type, b.previous_reading, b.current_reading,
@@ -87,7 +96,7 @@ class DecisionIn(BaseModel):
 
 @router.post("/bills/{bill_id}/decision")
 def decide(bill_id: int, body: DecisionIn, user: dict = Depends(supervisor_only)):
-    cond, args = _team_filter(user)
+    cond, args = _review_filter(user)
     with get_conn() as conn, dict_cursor(conn) as cur:
         cur.execute(
             f"""SELECT b.* FROM bills b JOIN employees e ON e.id = b.collector_id
@@ -323,9 +332,12 @@ def _undeposited(cur, supervisor_id: int) -> list[dict]:
 def cash_on_hand(user: dict = Depends(supervisor_only)):
     with get_conn() as conn, dict_cursor(conn) as cur:
         rows = _undeposited(cur, user["id"])
+        own, own_n = fieldwork.own_open_cash(cur, user["id"])
     ready = [r for r in rows if r["resolution_status"] != "pending"]
-    cash = sum(float(r["settled_cash"] or 0) for r in ready)
+    cash = sum(float(r["settled_cash"] or 0) for r in ready) + own
     return {
+        "own_collection": own,
+        "own_receipts": own_n,
         "cash_to_hand_over": cash,
         "cash_to_deposit": cash,          # old name, kept for older app builds
         "reconciliations_ready": len(ready),

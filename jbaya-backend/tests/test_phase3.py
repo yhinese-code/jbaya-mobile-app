@@ -85,7 +85,7 @@ def test_leave_workflow(client):
     s, e = _next_working_days(3)
     r = client.post("/me/leave", headers=h, json={"leave_type": "annual", "start_date": s.isoformat(), "end_date": e.isoformat(),
                                                    "reason": "سفر"}).json()
-    assert r["status"] == "pending_supervisor" and r["days"] == 3
+    assert r["status"] == "pending_hr" and r["days"] == 3       # Phase 5: straight to HR
     assert client.post("/me/leave", headers=h, json={"leave_type": "emergency", "start_date": s.isoformat(),
                                                       "end_date": s.isoformat()}).status_code == 409        # overlap
     bal = client.get("/me/leave", headers=h).json()["balances"]["annual"]
@@ -97,8 +97,8 @@ def test_leave_workflow(client):
     assert client.post(f"/hr/leave/{r['id']}/decision", headers=login(client, "JB-0492"), json={"action": "approve"}).status_code == 403
     queue = client.get("/hr/leave", headers=sp).json()
     assert [q["id"] for q in queue] == [r["id"]]
-    assert client.post(f"/hr/leave/{r['id']}/decision", headers=sp, json={"action": "approve"}).json()["status"] == "pending_hr"
-    assert client.post(f"/hr/leave/{r['id']}/decision", headers=sp, json={"action": "approve"}).status_code == 409
+    # the supervisor sees the request but cannot decide it
+    assert client.post(f"/hr/leave/{r['id']}/decision", headers=sp, json={"action": "approve"}).status_code == 403
     assert client.post(f"/hr/leave/{r['id']}/decision", headers=hr, json={"action": "approve", "note": "موافق"}).json()["status"] == "approved"
     bal = client.get("/me/leave", headers=h).json()["balances"]["annual"]
     assert bal["used"] == 3 and bal["pending"] == 0

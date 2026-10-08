@@ -9,7 +9,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from .. import audit, files, hr_logic, ledger
+from .. import audit, fieldwork, files, gain, hr_logic, ledger, runtime
 from ..config import settings
 from ..db import dict_cursor, get_conn
 from ..security import require_roles
@@ -122,6 +122,19 @@ def handovers_waiting(user: dict = Depends(finance_read)):
                GROUP BY s.id ORDER BY MIN(c.created_at)"""
         )
         rows = cur.fetchall()
+        # supervisors who collected themselves (their own cash has no reconciliation yet)
+        cur.execute(
+            """SELECT s.employee_code, s.full_name, MIN(r.issued_at) AS oldest FROM receipts r
+               JOIN employees s ON s.id = r.collector_id
+               WHERE s.role = 'supervisor' AND r.reconciliation_id IS NULL GROUP BY s.id"""
+        )
+        known = {r["employee_code"]: r for r in rows}
+        for o in cur.fetchall():
+            if o["employee_code"] in known:
+                known[o["employee_code"]]["own_collection"] = True
+            else:
+                rows.append({"employee_code": o["employee_code"], "full_name": o["full_name"], "reconciliations": 0,
+                             "unresolved": 0, "oldest": o["oldest"], "collectors": "جبايته الخاصة", "own_collection": True})
     return [{**r, "oldest": _iso(r["oldest"])} for r in rows]
 
 
@@ -148,6 +161,7 @@ def receive_handover(body: HandoverIn, user: dict = Depends(finance_only)):
         sup = cur.fetchone()
         if not sup:
             raise HTTPException(404, "المشرف غير موجود")
+        fieldwork.settle_self(cur, sup["id"])      # the supervisor's own collections come with his team's cash
         cur.execute(
             """SELECT id, settled_cash, resolution_status FROM reconciliations
                WHERE supervisor_id = %s AND deposit_id IS NULL AND handover_id IS NULL FOR UPDATE""",
@@ -600,3 +614,86 @@ def close_escalation(rec_id: int, body: CloseIn, user: dict = Depends(finance_on
         audit.log(cur, user["id"], f"reconciliation_{body.action}", "reconciliation", rec_id,
                   {"difference": str(r["difference"]), "note": body.note, "owner_approval": needs_owner})
     return {"reconciliation_id": rec_id, "resolution_status": new_status, "action": body.action}
+
+
+# ================================================================ Phase 5: the 35% rule (صيغة الـ35%)
+
+MODE_LABELS = {"not_set": "لم تُحدد بعد (تقديرات فقط)", "baseline_2025": "فوق إيرادات 2025 لنفس الشهر",
+               "per_house": "زيادة كل منزل عن فاتورته السابقة"}
+
+
+@router.get("/gain-share")
+def gain_share(months: int = Query(6, ge=1, le=24), user: dict = Depends(require_roles("finance", "owner"))):
+    """Both formulas side by side, whichever one the contract ends up using."""
+    runtime.require_feature(user, "finance.gain_share" if user["role"] == "finance" else "owner.gain_share")
+    with get_conn() as conn, dict_cursor(conn) as cur:
+        today = hr_logic.local_today(cur)
+        rows = []
+        y, m = today.year, today.month
+        for _ in range(months):
+            rows.append(gain.month_figures(cur, date(y, m, 1)))
+            y, m = (y, m - 1) if m > 1 else (y - 1, 12)
+        cur.execute("SELECT month, amount, note, updated_at FROM gain_share_baselines ORDER BY month")
+        baselines = [{"month": r["month"].isoformat()[:7], "amount": float(r["amount"]), "note": r["note"],
+                      "updated_at": r["updated_at"].isoformat()} for r in cur.fetchall()]
+    return {"mode": settings.GAIN_SHARE_MODE, "mode_label": MODE_LABELS.get(settings.GAIN_SHARE_MODE, settings.GAIN_SHARE_MODE),
+            "pct": settings.GAIN_SHARE_PCT, "fee": settings.COMPANY_FEE_IQD, "confirmed": settings.GAIN_SHARE_MODE != "not_set",
+            "months": rows, "baselines": baselines,
+            "note": "الصيغة تُحدد من الإدارة التقنية بعد تأكيد بنود العقد. ما دامت «لم تُحدد» لا يُقيَّد أي مبلغ."}
+
+
+class BaselineIn(BaseModel):
+    month: str = Field(..., pattern=r"^2025-\d{2}$")
+    amount: float = Field(..., ge=0)
+    note: str | None = Field(None, max_length=300)
+
+
+@router.post("/gain-share/baselines")
+def set_baseline(body: BaselineIn, user: dict = Depends(require_roles("finance", "owner"))):
+    """What was collected in each month of 2025 (the ceiling the increase is measured from)."""
+    month = date(2025, int(body.month[5:7]), 1)
+    with get_conn() as conn, dict_cursor(conn) as cur:
+        cur.execute("SELECT amount FROM gain_share_baselines WHERE month = %s", (month,))
+        old = cur.fetchone()
+        cur.execute("""INSERT INTO gain_share_baselines (month, amount, note, updated_by) VALUES (%s,%s,%s,%s)
+                       ON CONFLICT (month) DO UPDATE SET amount = EXCLUDED.amount, note = EXCLUDED.note,
+                       updated_by = EXCLUDED.updated_by, updated_at = NOW()""", (month, body.amount, body.note, user["id"]))
+        audit.log(cur, user["id"], "gain_baseline_set", "gain_baseline", body.month,
+                  {"old": float(old["amount"]) if old else None, "new": body.amount})
+    return {"month": body.month, "amount": body.amount}
+
+
+class SettleIn(BaseModel):
+    month: str = Field(..., pattern=r"^\d{4}-\d{2}$")
+
+
+@router.post("/gain-share/settle")
+def settle_month(body: SettleIn, user: dict = Depends(require_roles("finance"))):
+    """baseline_2025 mode: once a month is over, finance asks to book the company's % of the increase; the owner approves."""
+    if settings.GAIN_SHARE_MODE != "baseline_2025":
+        raise HTTPException(409, "التسوية الشهرية تُستخدم فقط عندما تكون الصيغة «فوق إيرادات 2025»")
+    y, m = int(body.month[:4]), int(body.month[5:7])
+    month = date(y, m, 1)
+    with get_conn() as conn, dict_cursor(conn) as cur:
+        today = hr_logic.local_today(cur)
+        if month >= today.replace(day=1):
+            raise HTTPException(409, "لا تُسوّى إلا الأشهر المنتهية")
+        f = gain.month_figures(cur, month)
+        if f["baseline_2025"] is None:
+            raise HTTPException(409, f"أدخل إيرادات {month.strftime('%m')}/2025 أولاً")
+        cur.execute("SELECT id, status FROM gain_share_settlements WHERE month = %s FOR UPDATE", (month,))
+        st = cur.fetchone()
+        if st and st["status"] != "rejected":
+            raise HTTPException(409, "هذا الشهر مسوّى أو بانتظار المالك")
+        if st:
+            cur.execute("DELETE FROM gain_share_settlements WHERE id = %s", (st["id"],))
+        # anything already booked on that month's receipts (per-house mode earlier) is not counted twice
+        amount = max(0, (f["estimate_baseline_2025"] or 0) - f["booked_per_house"])
+        cur.execute(
+            """INSERT INTO gain_share_settlements (month, collected, baseline, excess, pct, amount, status, created_by)
+               VALUES (%s,%s,%s,%s,%s,%s,'pending_owner',%s) RETURNING id""",
+            (month, f["water_collected"], f["baseline_2025"], f["above_baseline"], settings.GAIN_SHARE_PCT, amount, user["id"]),
+        )
+        sid = cur.fetchone()["id"]
+        audit.log(cur, user["id"], "gain_share_settle_requested", "gain_share", sid, {"month": body.month, "amount": amount})
+    return {"id": sid, "status": "pending_owner", "amount": amount}

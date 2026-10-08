@@ -6,6 +6,7 @@ import '../../core/session.dart';
 import '../finance/fraud_tabs.dart';
 import '../performance/performance_tabs.dart';
 import '../shared/alerts_tab.dart';
+import 'callbacks_tab.dart';
 import 'cc_widgets.dart';
 import 'escalations_tab.dart';
 import 'health_tab.dart';
@@ -17,7 +18,8 @@ import 'receipts_log_tab.dart';
 import 'trail_tab.dart';
 
 /// Central Command: dark "video wall" for the operations room.
-/// Login requires a WhatsApp code (two-factor). The screen locks itself after 15 minutes without activity.
+/// Sessions end daily on the server (and whenever the tech panel ends them); the device must be approved by the tech
+/// panel. Sections follow the tech panel's permission matrix (command.* features).
 class CentralCommandScreen extends StatefulWidget {
   const CentralCommandScreen({super.key});
 
@@ -25,139 +27,109 @@ class CentralCommandScreen extends StatefulWidget {
   State<CentralCommandScreen> createState() => _CentralCommandScreenState();
 }
 
+/// One NavigationRail entry, shown only when [feature] is allowed.
+class _Section {
+  final String feature;
+  final IconData icon;
+  final String label;
+  final Widget Function() builder;
+  const _Section(this.feature, this.icon, this.label, this.builder);
+}
+
 class _CentralCommandScreenState extends State<CentralCommandScreen> {
-  static const _idleLimit = Duration(minutes: 15);
+  static const _trailFeature = 'command.trail';
 
-  int _tab = 0;
+  /// Selected section by feature key, so filtering never shifts the selection to another section.
+  String? _selected;
   String? _trailEmployee;
-  Timer? _idleTimer;
 
-  static const _destinations = [
-    (Icons.radar, 'العمليات الحية'),
-    (Icons.timeline, 'تتبع المسار'),
-    (Icons.leaderboard, 'القواطع والأداء'),
-    (Icons.receipt_long, 'سجل الإيصالات'),
-    (Icons.campaign, 'التوجيهات'),
-    (Icons.key, 'الرمز الرئيسي'),
-    (Icons.sos, 'الاستغاثات'),
-    (Icons.report, 'فروقات نقدية'),
-    (Icons.gpp_maybe, 'المخاطر المالية'),
-    (Icons.balance, 'الأداء والتعادل'),
-    (Icons.monitor_heart, 'صحة النظام'),
-  ];
-
-  @override
-  void initState() {
-    super.initState();
-    _resetIdle();
-  }
-
-  @override
-  void dispose() {
-    _idleTimer?.cancel();
-    super.dispose();
-  }
-
-  void _resetIdle() {
-    _idleTimer?.cancel();
-    _idleTimer = Timer(_idleLimit, () {
-      if (!mounted) return;
-      Session.logout(context);
-    });
+  List<_Section> get _sections {
+    final all = [
+      _Section('command.live', Icons.radar, 'العمليات الحية', () => LiveOpsTab(onOpenTrail: _openTrail)),
+      _Section(_trailFeature, Icons.timeline, 'تتبع المسار', () => TrailTab(initialEmployee: _trailEmployee)),
+      _Section('command.sectors', Icons.leaderboard, 'القواطع والأداء', () => const PerformanceTab()),
+      _Section('command.receipts', Icons.receipt_long, 'سجل الإيصالات', () => const ReceiptsLogTab()),
+      _Section('command.messages', Icons.campaign, 'التوجيهات', () => const MessagesTab()),
+      _Section('command.master_code', Icons.key, 'الرمز الرئيسي', () => const MasterCodeTab()),
+      _Section('command.sos', Icons.sos, 'الاستغاثات', () => const AlertsTab()),
+      _Section('command.differences', Icons.report, 'فروقات نقدية', () => const EscalationsTab()),
+      _Section('command.fin_risk', Icons.gpp_maybe, 'المخاطر المالية', () => const FinancialRiskCommandTab()),
+      _Section('command.performance', Icons.balance, 'الأداء والتعادل', () => const PerformanceMoneyTab()),
+      _Section('command.callbacks', Icons.phone_callback, 'الاتصال العشوائي', () => const CallbacksTab()),
+      _Section('command.health', Icons.monitor_heart, 'صحة النظام', () => const HealthTab()),
+    ];
+    return all.where((s) => Session.instance.can(s.feature)).toList();
   }
 
   void _openTrail(String code) {
+    // Deep link from live ops: only when the trail section is allowed for this account.
+    if (!_sections.any((s) => s.feature == _trailFeature)) return;
     setState(() {
       _trailEmployee = code;
-      _tab = 1;
+      _selected = _trailFeature;
     });
-  }
-
-  Widget _body() {
-    switch (_tab) {
-      case 0:
-        return LiveOpsTab(onOpenTrail: _openTrail);
-      case 1:
-        return TrailTab(initialEmployee: _trailEmployee);
-      case 2:
-        return const PerformanceTab();
-      case 3:
-        return const ReceiptsLogTab();
-      case 4:
-        return const MessagesTab();
-      case 5:
-        return const MasterCodeTab();
-      case 6:
-        return const AlertsTab();
-      case 7:
-        return const EscalationsTab();
-      case 8:
-        return const FinancialRiskCommandTab();
-      case 9:
-        return const PerformanceMoneyTab();
-      default:
-        return const HealthTab();
-    }
   }
 
   @override
   Widget build(BuildContext context) {
     final s = Session.instance;
+    final sections = _sections;
+    var index = sections.indexWhere((x) => x.feature == _selected);
+    if (index < 0) index = 0;
     return Theme(
       data: CC.theme(context),
-      child: Listener(
-        behavior: HitTestBehavior.translucent,
-        onPointerDown: (_) => _resetIdle(),
-        onPointerSignal: (_) => _resetIdle(),
-        child: Scaffold(
-          appBar: AppBar(
-            backgroundColor: CC.panel,
-            foregroundColor: CC.text,
-            titleSpacing: 16,
-            title: const Row(
-              children: [
-                Icon(Icons.shield_moon, color: CC.accent),
-                SizedBox(width: 10),
-                Text('القيادة المركزية - منظومة جباية بغداد', style: TextStyle(fontWeight: FontWeight.bold)),
-              ],
-            ),
-            actions: [
-              const Center(child: _Clock()),
-              const SizedBox(width: 16),
-              Center(child: Text('${s.fullName} (${s.employeeCode})', style: const TextStyle(color: CC.muted))),
-              const SizedBox(width: 8),
-              const LogoutButton(),
-              const SizedBox(width: 8),
+      child: Scaffold(
+        appBar: AppBar(
+          backgroundColor: CC.panel,
+          foregroundColor: CC.text,
+          titleSpacing: 16,
+          title: const Row(
+            children: [
+              Icon(Icons.shield_moon, color: CC.accent),
+              SizedBox(width: 10),
+              Text('القيادة المركزية - منظومة جباية بغداد', style: TextStyle(fontWeight: FontWeight.bold)),
             ],
           ),
-          body: Row(
-            children: [
-              SingleChildScrollView(
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(minHeight: MediaQuery.of(context).size.height - kToolbarHeight),
-                  child: IntrinsicHeight(
-                    child: NavigationRail(
-                      selectedIndex: _tab,
-                      onDestinationSelected: (i) => setState(() => _tab = i),
-                      labelType: NavigationRailLabelType.all,
-                      backgroundColor: CC.panel,
-                      indicatorColor: CC.accent.withValues(alpha: 0.2),
-                      selectedIconTheme: const IconThemeData(color: CC.accent),
-                      unselectedIconTheme: const IconThemeData(color: CC.muted),
-                      selectedLabelTextStyle: const TextStyle(color: CC.accent, fontWeight: FontWeight.bold, fontSize: 12),
-                      unselectedLabelTextStyle: const TextStyle(color: CC.muted, fontSize: 12),
-                      destinations: [
-                        for (final d in _destinations) NavigationRailDestination(icon: Icon(d.$1), label: Text(d.$2)),
-                      ],
+          actions: [
+            const Center(child: _Clock()),
+            const SizedBox(width: 16),
+            Center(child: Text('${s.fullName} (${s.employeeCode})', style: const TextStyle(color: CC.muted))),
+            const SizedBox(width: 8),
+            const LogoutButton(),
+            const SizedBox(width: 8),
+          ],
+        ),
+        body: sections.isEmpty
+            ? const Center(
+                child: Text('لا توجد أقسام مفعلة لحسابك. راجع الإدارة التقنية', style: TextStyle(color: CC.muted)),
+              )
+            : Row(
+                children: [
+                  SingleChildScrollView(
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(minHeight: MediaQuery.of(context).size.height - kToolbarHeight),
+                      child: IntrinsicHeight(
+                        child: NavigationRail(
+                          selectedIndex: index,
+                          onDestinationSelected: (i) => setState(() => _selected = sections[i].feature),
+                          labelType: NavigationRailLabelType.all,
+                          backgroundColor: CC.panel,
+                          indicatorColor: CC.accent.withValues(alpha: 0.2),
+                          selectedIconTheme: const IconThemeData(color: CC.accent),
+                          unselectedIconTheme: const IconThemeData(color: CC.muted),
+                          selectedLabelTextStyle: const TextStyle(color: CC.accent, fontWeight: FontWeight.bold, fontSize: 12),
+                          unselectedLabelTextStyle: const TextStyle(color: CC.muted, fontSize: 12),
+                          destinations: [
+                            for (final d in sections) NavigationRailDestination(icon: Icon(d.icon), label: Text(d.label)),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
-                ),
+                  const VerticalDivider(width: 1),
+                  Expanded(child: sections[index].builder()),
+                ],
               ),
-              const VerticalDivider(width: 1),
-              Expanded(child: _body()),
-            ],
-          ),
-        ),
       ),
     );
   }

@@ -21,6 +21,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
   final _addressController = TextEditingController();
   final _phoneController = TextEditingController();
   final _serialController = TextEditingController();
+  final _accountController = TextEditingController();
   String _propertyClass = 'Household';
   String _meterStatus = 'working';
   int _formVersion = 0; // forces dropdowns to rebuild after reset
@@ -39,6 +40,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     _addressController.dispose();
     _phoneController.dispose();
     _serialController.dispose();
+    _accountController.dispose();
     super.dispose();
   }
 
@@ -82,6 +84,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
         'is_mocked': _gps!.isMocked,
         'meter_status': _meterStatus,
         'meter_serial': _serialController.text.trim().isEmpty ? null : _serialController.text.trim(),
+        'account_no': _accountController.text.trim().isEmpty ? null : _accountController.text.trim(),
       });
       if (!mounted) return;
       setState(() {
@@ -137,6 +140,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
       _addressController.clear();
       _phoneController.clear();
       _serialController.clear();
+      _accountController.clear();
       _propertyClass = 'Household';
       _meterStatus = 'working';
       _gps = null;
@@ -243,6 +247,14 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
         const SizedBox(height: 10),
         TextField(controller: _serialController, decoration: const InputDecoration(labelText: 'الرقم التسلسلي للعداد (اختياري)', border: OutlineInputBorder())),
       ],
+      const SizedBox(height: 10),
+      TextField(
+        controller: _accountController,
+        decoration: const InputDecoration(
+          labelText: 'رقم الحساب في دائرة الماء (من الفاتورة القديمة، اختياري)',
+          border: OutlineInputBorder(),
+        ),
+      ),
       const SizedBox(height: 10),
       TextField(
         controller: _phoneController,

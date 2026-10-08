@@ -22,7 +22,12 @@ class ApiClient {
 
   String? _token;
 
+  /// Called when the server ends the session (daily logout, tech panel, device revoked, account suspended).
+  static void Function(String message)? onSessionEnded;
+
   void setToken(String? token) => _token = token;
+
+  bool get hasToken => _token != null;
 
   Map<String, String> get _headers => {
         'Content-Type': 'application/json',
@@ -41,6 +46,10 @@ class ApiClient {
 
   Future<dynamic> patch(String path, [Map<String, dynamic>? body]) {
     return _send(() => http.patch(_uri(path), headers: _headers, body: jsonEncode(body ?? <String, dynamic>{})));
+  }
+
+  Future<dynamic> delete(String path) {
+    return _send(() => http.delete(_uri(path), headers: _headers));
   }
 
   Future<dynamic> _send(Future<http.Response> Function() call) async {
@@ -73,6 +82,10 @@ class ApiClient {
       } else if (detail is List && detail.isNotEmpty) {
         message = 'بيانات غير مكتملة أو غير صالحة، يرجى مراجعة الحقول';
       }
+    }
+    if (res.statusCode == 401 && _token != null) {
+      _token = null;
+      onSessionEnded?.call(message);
     }
     throw ApiException(res.statusCode, message);
   }

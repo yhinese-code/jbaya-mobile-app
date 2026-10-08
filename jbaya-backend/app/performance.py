@@ -53,7 +53,7 @@ def _daily_receipts(cur, start: date, end: date, collector_ids: list[int]) -> di
     cur.execute(
         f"""SELECT collector_id AS cid, (issued_at AT TIME ZONE %(tz)s)::date AS day, COUNT(*) AS n,
                    COUNT(*) FILTER (WHERE verification_method = 'otp') AS otp,
-                   COALESCE(SUM(company_fee + company_share), 0) AS earn
+                   COALESCE(SUM(company_fee + company_share + gain_share), 0) AS earn
             FROM receipts WHERE issued_at >= {hr_logic.LO} AND issued_at < {hr_logic.HI} AND collector_id = ANY(%(ids)s)
             GROUP BY 1, 2""",
         {"s": start, "e": end, "tz": settings.APP_TIMEZONE, "ids": collector_ids},
@@ -67,7 +67,7 @@ def _daily_receipts(cur, start: date, end: date, collector_ids: list[int]) -> di
 def _avg_net_per_receipt(cur, collector_id: int | None, today: date) -> float:
     """Average company earning per receipt over the last 60 days, minus commission where it applies."""
     cur.execute(
-        """SELECT COUNT(*) AS n, COALESCE(SUM(company_fee + company_share), 0) AS earn,
+        """SELECT COUNT(*) AS n, COALESCE(SUM(company_fee + company_share + gain_share), 0) AS earn,
                   COUNT(*) FILTER (WHERE verification_method = 'otp') AS otp
            FROM receipts WHERE issued_at >= NOW() - INTERVAL '60 days' AND (%(c)s::int IS NULL OR collector_id = %(c)s)""",
         {"c": collector_id},
@@ -85,7 +85,7 @@ def _team_avg_per_day(cur, today: date) -> float:
     """Receipts per collector per working day over the last 30 days (complete days)."""
     start = today - timedelta(days=30)
     days = len(hr_logic.working_days(start, today - timedelta(days=1)))
-    cur.execute("SELECT COUNT(*) AS n FROM employees WHERE role = 'collector' AND active")
+    cur.execute("SELECT COUNT(*) AS n FROM employees WHERE role IN ('collector','supervisor') AND active")
     collectors = cur.fetchone()["n"]
     cur.execute(
         f"""SELECT COUNT(*) AS n FROM receipts r JOIN employees e ON e.id = r.collector_id AND e.active
@@ -145,7 +145,8 @@ def per_collector_money(cur, period: str | None = None) -> dict:
     if not period:
         period = f"{today.year}-{today.month:02d}"
     start, end = hr_logic.parse_period(period)
-    cur.execute("SELECT * FROM employees WHERE role = 'collector' AND active ORDER BY employee_code")
+    # supervisors also collect with the same quota (Phase 5)
+    cur.execute("SELECT * FROM employees WHERE role IN ('collector','supervisor') AND active ORDER BY employee_code")
     emps = cur.fetchall()
     receipts = _daily_receipts(cur, start, end, [e["id"] for e in emps])
     team_avg = _team_avg_per_day(cur, today)
@@ -156,7 +157,7 @@ def per_collector_money(cur, period: str | None = None) -> dict:
         net_per = _avg_net_per_receipt(cur, e["id"], today)
         be = math.ceil(m["daily_fixed_cost"] / net_per) if net_per > 0 else None
         flag = m["losing_streak"] >= settings.LOSING_STREAK_ALERT_DAYS
-        rows.append({"employee_code": e["employee_code"], "full_name": e["full_name"], **m,
+        rows.append({"employee_code": e["employee_code"], "full_name": e["full_name"], "role": e["role"], **m,
                      "net_per_receipt": round(net_per), "breakeven_receipts_per_day": be,
                      "lazy_flag": flag, "label": _label(m, be, team_avg)})
     rows.sort(key=lambda r: r["net"])
@@ -190,7 +191,7 @@ def company_breakeven(cur) -> dict:
     net_per = _avg_net_per_receipt(cur, None, today)
     need = math.ceil(monthly / net_per) if net_per else None
     cur.execute(
-        f"""SELECT COUNT(*) AS n, COALESCE(SUM(company_fee + company_share), 0) AS earn FROM receipts
+        f"""SELECT COUNT(*) AS n, COALESCE(SUM(company_fee + company_share + gain_share), 0) AS earn FROM receipts
             WHERE issued_at >= {hr_logic.LO} AND issued_at < {hr_logic.HI}""",
         {"s": start, "e": end, "tz": settings.APP_TIMEZONE},
     )
@@ -226,8 +227,22 @@ def team_view(cur, supervisor_id: int | None) -> dict:
                     "weak_streak": c["losing_streak"], "flag": c["lazy_flag"], "label": _team_label(c, data["team_avg_receipts_per_day"]),
                     "days": [{"day": d["day"], "receipts": d["receipts"], "status": d["status"]} for d in c["days"]]})
     out.sort(key=lambda r: (not r["flag"], r["receipts_per_day"] or 0))
+    behind = [r for r in out if r["label"] != "ضمن الهدف"]
+    laggards = [r for r in out if r["flag"]]
+    if not out:
+        banner = None
+    elif laggards or len(behind) * 2 >= len(out):
+        names = "، ".join(r["full_name"] for r in (laggards or behind)[:4])
+        banner = {"level": "bad", "title": "فريقك دون المستوى المطلوب",
+                  "text": f"{len(behind)} من أصل {len(out)} في فريقك دون الهدف هذا الشهر. الأكثر تأخراً: {names}. "
+                          "تابعهم ميدانياً اليوم ووزّع العقارات المتأخرة."}
+    elif behind:
+        banner = {"level": "warn", "title": "بعض أعضاء فريقك متأخرون",
+                  "text": "، ".join(r["full_name"] for r in behind[:4]) + " دون الهدف هذا الشهر."}
+    else:
+        banner = {"level": "good", "title": "فريقك ضمن الهدف", "text": "استمروا على هذا المستوى."}
     return {"today": today_iso, "team_avg_receipts_per_day": data["team_avg_receipts_per_day"], "collectors": out,
-            "laggards": sum(1 for r in out if r["flag"])}
+            "laggards": len(laggards), "behind": len(behind), "banner": banner}
 
 
 def _team_label(c: dict, team_avg: float) -> str:
@@ -242,7 +257,7 @@ def _team_label(c: dict, team_avg: float) -> str:
 
 
 def coach(cur, emp: dict) -> dict:
-    """The collector's own coaching card: no money, just houses."""
+    """The collector's (or field supervisor's) own card: whether he is on track — NO numbers, no money (Phase 5)."""
     today = hr_logic.local_today(cur)
     start, end = hr_logic.parse_period(f"{today.year}-{today.month:02d}")
     receipts = _daily_receipts(cur, start, end, [emp["id"]]).get(emp["id"], {})
@@ -252,22 +267,24 @@ def coach(cur, emp: dict) -> dict:
     team_avg = _team_avg_per_day(cur, today)
     today_n = receipts.get(today, {"n": 0})["n"]
     working = hr_logic.is_working_day(today)
-    messages = []
-    remaining = max(0, (target or 0) - today_n)
-    to_avg = max(0, math.ceil(team_avg) - today_n) if team_avg else 0
+    rpd = m["receipts_per_day"]
+    streak = m["losing_streak"]
+
+    if streak >= settings.LOSING_STREAK_ALERT_DAYS:
+        status, title = "underperforming", "أداؤك ضعيف"
+        text = "أنت دون المستوى المطلوب منذ عدة أيام متتالية، ومشرفك يرى هذا التنبيه. ارفع عدد المنازل التي تجبيها يومياً."
+    elif streak or (target and rpd is not None and rpd < target) or (team_avg and rpd is not None and rpd < team_avg * 0.8):
+        status, title = "behind", "أنت متأخر قليلاً"
+        text = "أداؤك هذا الشهر أقل من المطلوب. زد عدد المنازل اليوم لتعود إلى المسار."
+    else:
+        status, title = "on_track", "أداؤك جيد"
+        text = "أنت ضمن الهدف المطلوب. استمر على هذا المستوى."
+    messages = [{"level": {"underperforming": "bad", "behind": "warn", "on_track": "good"}[status], "text": text}]
     if not working:
         messages.append({"level": "info", "text": "اليوم عطلة. أي منزل تجبيه اليوم يُحسب لك إضافة."})
-    elif target and remaining > 0:
-        messages.append({"level": "warn" if m["losing_streak"] else "info",
-                         "text": f"تحتاج {houses(remaining)} إضافية اليوم لتحقيق هدفك اليومي ({houses(target)})."})
+    elif target and today_n >= target:
+        messages.append({"level": "good", "text": "أحسنت! حققت هدف اليوم. كل منزل إضافي يرفع تقييمك."})
     elif target:
-        messages.append({"level": "good", "text": "أحسنت! حققت هدفك اليومي. كل منزل إضافي يرفع تقييمك."})
-    if working and to_avg > remaining:
-        messages.append({"level": "info", "text": f"{houses(to_avg)} أخرى وتلحق بمعدل زملائك اليومي ({houses(math.ceil(team_avg))})."})
-    if m["losing_streak"] >= settings.LOSING_STREAK_ALERT_DAYS:
-        messages.append({"level": "bad", "text": f"أداؤك دون الهدف منذ {days_ar(m['losing_streak'])} متتالية. مشرفك يرى هذا التنبيه."})
-    elif m["losing_streak"]:
-        messages.append({"level": "warn", "text": "لم تحقق هدفك أمس. عوّض اليوم حتى لا يتكرر."})
-    return {"today": today.isoformat(), "working_day": working, "today_receipts": today_n, "daily_target": target,
-            "remaining_today": remaining, "team_avg": round(team_avg, 1), "good_days": m["profitable_days"],
-            "weak_days": m["losing_days"], "weak_streak": m["losing_streak"], "messages": messages}
+        messages.append({"level": "info", "text": "لم تحقق هدف اليوم بعد. استمر."})
+    return {"today": today.isoformat(), "working_day": working, "status": status, "title": title, "messages": messages,
+            "days": [{"day": d["day"], "status": d["status"]} for d in m["days"]]}

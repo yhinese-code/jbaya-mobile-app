@@ -528,10 +528,12 @@ CREATE INDEX IF NOT EXISTS idx_bills_paid ON bills(paid_at) WHERE status = 'paid
 
 ALTER TABLE employees DROP CONSTRAINT IF EXISTS employees_role_check;
 ALTER TABLE employees ADD CONSTRAINT employees_role_check
-    CHECK (role IN ('collector','supervisor','finance','command','hr','admin','owner'));
+    CHECK (role IN ('collector','supervisor','finance','command','hr','admin','owner','tech'));
 
 -- The company keeps COMPANY_SHARE_PCT of the water amount; the rest is the directorate's trust money.
 ALTER TABLE receipts ADD COLUMN IF NOT EXISTS company_share NUMERIC(14,2) NOT NULL DEFAULT 0;
+ALTER TABLE receipts ADD COLUMN IF NOT EXISTS gain_basis NUMERIC(14,2);          -- Phase 5 (35% rule)
+ALTER TABLE receipts ADD COLUMN IF NOT EXISTS gain_share NUMERIC(14,2) NOT NULL DEFAULT 0;
 
 -- Supervisor brings the cash to headquarters; finance counts it blind.
 CREATE TABLE IF NOT EXISTS cash_handovers (
@@ -577,6 +579,23 @@ ALTER TABLE journal_entries ADD COLUMN IF NOT EXISTS decision_note TEXT;
 
 -- The account book (دفتر الحساب) is DERIVED from what happens in the field, so it can never drift from it.
 -- Accounts: app/ledger.py (CHART). Government money is a trust (أمانة): neither company income nor company debt.
+-- Phase 5 table used by the view below (35% rule settled monthly)
+CREATE TABLE IF NOT EXISTS gain_share_settlements (
+    id              SERIAL PRIMARY KEY,
+    month           DATE UNIQUE NOT NULL,                -- the month being settled (first day)
+    collected       NUMERIC(16,2) NOT NULL,
+    baseline        NUMERIC(16,2) NOT NULL,
+    excess          NUMERIC(16,2) NOT NULL,
+    pct             NUMERIC(6,2) NOT NULL,
+    amount          NUMERIC(16,2) NOT NULL,
+    status          VARCHAR(20) NOT NULL CHECK (status IN ('pending_owner','posted','rejected')),
+    created_by      INT NOT NULL REFERENCES employees(id),
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    decided_by      INT REFERENCES employees(id),
+    decided_at      TIMESTAMPTZ,
+    decision_note   TEXT
+);
+
 DROP VIEW IF EXISTS ledger_postings;
 CREATE VIEW ledger_postings AS
 -- 1. collection: cash with the collector; the directorate's trust, the company's share and the service fee
@@ -584,7 +603,10 @@ SELECT r.issued_at AS posted_at, '1010'::text AS account, r.total_amount AS debi
        'receipt'::text AS source, r.receipt_no::text AS ref, 'تحصيل من مواطن'::text AS memo, r.collector_id AS employee_id
 FROM receipts r
 UNION ALL
-SELECT r.issued_at, '2100', 0, r.gov_amount - r.company_share, 'receipt', r.receipt_no, 'أمانة دائرة الماء', r.collector_id FROM receipts r
+SELECT r.issued_at, '2100', 0, r.gov_amount - r.company_share - r.gain_share, 'receipt', r.receipt_no, 'أمانة دائرة الماء', r.collector_id FROM receipts r
+UNION ALL
+SELECT r.issued_at, '4120', 0, r.gain_share, 'receipt', r.receipt_no, 'نسبة الشركة من الزيادة', r.collector_id
+FROM receipts r WHERE r.gain_share <> 0
 UNION ALL
 SELECT r.issued_at, '4110', 0, r.company_share, 'receipt', r.receipt_no, 'حصة الشركة من مبلغ الماء', r.collector_id
 FROM receipts r WHERE r.company_share <> 0
@@ -705,4 +727,144 @@ SELECT g.remitted_at, CASE g.source WHEN 'cash' THEN '1050' ELSE '1100' END, 0, 
 -- 8. manual corrections (only once posted / approved by the owner)
 UNION ALL
 SELECT j.posted_at, jl.account, jl.debit, jl.credit, 'journal', j.id::text, j.memo, NULL::int
-FROM journal_lines jl JOIN journal_entries j ON j.id = jl.entry_id WHERE j.status = 'posted';
+FROM journal_lines jl JOIN journal_entries j ON j.id = jl.entry_id WHERE j.status = 'posted'
+-- 9. the 35% rule settled monthly (Phase 5): moves money from the directorate's trust to the company
+UNION ALL
+-- booked on the last moment of the settled month (Baghdad time), so the income lands in the right month
+SELECT ((g.month + INTERVAL '1 month')::timestamp AT TIME ZONE 'Asia/Baghdad') - INTERVAL '1 second', '2100', g.amount, 0, 'gain_share', g.id::text, 'تسوية نسبة الزيادة لشهر ' || to_char(g.month, 'YYYY-MM'), NULL::int
+FROM gain_share_settlements g WHERE g.status = 'posted'
+UNION ALL
+SELECT ((g.month + INTERVAL '1 month')::timestamp AT TIME ZONE 'Asia/Baghdad') - INTERVAL '1 second', '4120', 0, g.amount, 'gain_share', g.id::text, 'تسوية نسبة الزيادة لشهر ' || to_char(g.month, 'YYYY-MM'), NULL::int
+FROM gain_share_settlements g WHERE g.status = 'posted';
+
+-- ---------------------------------------------------------------
+-- Phase 5: tech panel (god mode), device approval, runtime settings, citizen-number protocol,
+-- the 35% rule, previous bills, random call-back audits
+
+ALTER TABLE employees DROP CONSTRAINT IF EXISTS employees_role_check;
+ALTER TABLE employees ADD CONSTRAINT employees_role_check
+    CHECK (role IN ('collector','supervisor','finance','command','hr','admin','owner','tech'));
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS permissions JSONB NOT NULL DEFAULT '{}'::jsonb;  -- per-person switches
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS suspended_reason TEXT;
+
+-- settings overridden from the tech panel (value = JSON); history of every change
+CREATE TABLE IF NOT EXISTS system_settings (
+    key             VARCHAR(60) PRIMARY KEY,
+    value           JSONB NOT NULL,
+    updated_by      INT REFERENCES employees(id),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS setting_changes (
+    id              SERIAL PRIMARY KEY,
+    key             VARCHAR(60) NOT NULL,
+    old_value       JSONB,
+    new_value       JSONB,
+    changed_by      INT REFERENCES employees(id),
+    note            TEXT,
+    changed_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+-- which settings the owner may change from his own panel (empty = the built-in defaults)
+CREATE TABLE IF NOT EXISTS owner_editable_settings (
+    key             VARCHAR(60) PRIMARY KEY
+);
+
+-- each phone / PC is approved once and is then bound to ONE account
+CREATE TABLE IF NOT EXISTS devices (
+    id              SERIAL PRIMARY KEY,
+    device_id       VARCHAR(100) UNIQUE NOT NULL,
+    employee_id     INT NOT NULL REFERENCES employees(id),
+    label           TEXT,
+    platform        VARCHAR(40),
+    user_agent      TEXT,
+    first_ip        VARCHAR(60),
+    last_ip         VARCHAR(60),
+    status          VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','rejected','revoked')),
+    requested_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    decided_by      INT REFERENCES employees(id),
+    decided_at      TIMESTAMPTZ,
+    decision_note   TEXT,
+    last_seen_at    TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_devices_employee ON devices(employee_id, status);
+
+CREATE TABLE IF NOT EXISTS sessions (
+    id              SERIAL PRIMARY KEY,
+    jti             VARCHAR(40) UNIQUE NOT NULL,
+    employee_id     INT NOT NULL REFERENCES employees(id),
+    device_row_id   INT REFERENCES devices(id),
+    ip              VARCHAR(60),
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    expires_at      TIMESTAMPTZ NOT NULL,
+    last_seen_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    revoked_at      TIMESTAMPTZ,
+    revoked_by      INT REFERENCES employees(id),
+    revoke_reason   TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_sessions_employee ON sessions(employee_id, expires_at);
+
+-- per-sector switches: {"collection": false, "registration": false, "master_code": false, "estimates": false}
+ALTER TABLE sectors ADD COLUMN IF NOT EXISTS switches JSONB NOT NULL DEFAULT '{}'::jsonb;
+
+-- the directorate's own subscriber number, used to match previous bills
+ALTER TABLE properties ADD COLUMN IF NOT EXISTS directorate_account_no VARCHAR(40);
+CREATE INDEX IF NOT EXISTS idx_properties_account ON properties(directorate_account_no);
+CREATE INDEX IF NOT EXISTS idx_properties_meter ON properties(meter_serial);
+
+-- previous bills (about 90% of houses have one): imported from a file or entered at the house
+CREATE TABLE IF NOT EXISTS prev_bill_imports (
+    id              SERIAL PRIMARY KEY,
+    filename        TEXT,
+    uploaded_by     INT NOT NULL REFERENCES employees(id),
+    uploaded_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    status          VARCHAR(20) NOT NULL DEFAULT 'staged' CHECK (status IN ('staged','committed','discarded')),
+    rows            JSONB NOT NULL DEFAULT '[]'::jsonb,     -- parsed rows + match result, reviewed before commit
+    summary         JSONB NOT NULL DEFAULT '{}'::jsonb,
+    committed_by    INT REFERENCES employees(id),
+    committed_at    TIMESTAMPTZ
+);
+CREATE TABLE IF NOT EXISTS previous_bills (
+    id              SERIAL PRIMARY KEY,
+    property_id     INT NOT NULL REFERENCES properties(id),
+    amount          NUMERIC(14,2) NOT NULL CHECK (amount >= 0),     -- water amount of that bill (no company fee)
+    period_days     INT NOT NULL DEFAULT 30 CHECK (period_days > 0),
+    bill_date       DATE,
+    consumption     NUMERIC(14,3),
+    source          VARCHAR(10) NOT NULL CHECK (source IN ('import','field','manual')),
+    import_id       INT REFERENCES prev_bill_imports(id),
+    photo_path      TEXT,
+    status          VARCHAR(20) NOT NULL CHECK (status IN ('pending_review','confirmed','mismatch','rejected','superseded')),
+    flags           JSONB NOT NULL DEFAULT '[]'::jsonb,
+    entered_by      INT REFERENCES employees(id),
+    reviewed_by     INT REFERENCES employees(id),
+    reviewed_at     TIMESTAMPTZ,
+    field_amount    NUMERIC(14,2),            -- what the collector read on the paper bill when it differs
+    note            TEXT,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_prev_bills_property ON previous_bills(property_id, status);
+-- who reported the paper bill at the house (he may never review his own report); a mismatch waits for review
+-- while the imported amount stays the confirmed basis
+ALTER TABLE previous_bills ADD COLUMN IF NOT EXISTS field_entered_by INT REFERENCES employees(id);
+ALTER TABLE previous_bills ADD COLUMN IF NOT EXISTS review_needed BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- the 35% rule: receipts.gain_share / gain_basis and gain_share_settlements are created with the ledger view above
+CREATE TABLE IF NOT EXISTS gain_share_baselines (
+    month           DATE PRIMARY KEY,                    -- first day of a 2025 month
+    amount          NUMERIC(16,2) NOT NULL CHECK (amount >= 0),   -- water money collected that month in 2025
+    note            TEXT,
+    updated_by      INT REFERENCES employees(id),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Command calls a random sample of citizens: "did you pay X today?"
+CREATE TABLE IF NOT EXISTS callback_audits (
+    id              SERIAL PRIMARY KEY,
+    receipt_id      INT UNIQUE NOT NULL REFERENCES receipts(id),
+    assigned_date   DATE NOT NULL,
+    status          VARCHAR(20) NOT NULL DEFAULT 'pending'
+                    CHECK (status IN ('pending','confirmed','denied','wrong_amount','no_answer')),
+    answer_note     TEXT,
+    called_by       INT REFERENCES employees(id),
+    called_at       TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_callbacks_day ON callback_audits(assigned_date, status);

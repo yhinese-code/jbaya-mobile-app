@@ -217,9 +217,7 @@ def request_leave(body: LeaveIn, user: dict = Depends(current_user)):
         if bal["remaining"] is not None and days > bal["remaining"]:
             raise HTTPException(422, f"الرصيد المتبقي {bal['remaining']} يوم فقط")
         attachment = files.save_photo(body.attachment_base64, "leave") if body.attachment_base64 else None
-        cur.execute("SELECT supervisor_id FROM employees WHERE id = %s", (user["id"],))
-        has_sup = cur.fetchone()["supervisor_id"] is not None
-        status = "pending_supervisor" if has_sup else "pending_hr"
+        status = "pending_hr"          # Phase 5: only HR approves; the supervisor is just informed
         cur.execute(
             """INSERT INTO leave_requests (employee_id, leave_type, start_date, end_date, days, reason, attachment_path, status)
                VALUES (%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *""",

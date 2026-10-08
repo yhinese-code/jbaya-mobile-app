@@ -10,7 +10,8 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from .. import audit, billing, codes, files, whatsapp
+from .. import audit, billing, codes, files, gain, runtime, whatsapp
+from ..fieldwork import FIELD_ROLES
 from ..config import settings
 from ..db import dict_cursor, get_conn
 from ..security import require_roles
@@ -18,7 +19,7 @@ from ..utils import haversine_m, mask_phone, normalize_iraqi_phone, point_in_pol
 from ..verification import VerifyIn, verify
 
 router = APIRouter(tags=["collector"])
-collector_only = require_roles("collector")
+collector_only = require_roles(*FIELD_ROLES)      # supervisors also collect in the field (Phase 5)
 
 
 # ------------------------------------------------------------------ helpers
@@ -43,7 +44,7 @@ def _load_property(cur, property_id: int, user: dict, lock: bool = False) -> dic
     p = cur.fetchone()
     if not p:
         raise HTTPException(404, "العقار غير موجود")
-    if user["role"] == "collector" and p["sector_id"] != user["sector_id"]:
+    if user["role"] in FIELD_ROLES and p["sector_id"] != user["sector_id"]:
         raise HTTPException(403, "هذا العقار خارج القاطع المخصص لك")
     return p
 
@@ -55,6 +56,12 @@ def _load_bill(cur, bill_id: int, user: dict, lock: bool = False) -> dict:
         raise HTTPException(404, "الفاتورة غير موجودة")
     if user["role"] == "collector" and b["collector_id"] != user["id"]:
         raise HTTPException(403, "هذه الفاتورة لا تخصك")
+    if user["role"] == "supervisor" and b["collector_id"] != user["id"]:
+        cur.execute("SELECT supervisor_id, role FROM employees WHERE id = %s", (b["collector_id"],))
+        owner = cur.fetchone() or {}
+        peer = owner.get("role") == "supervisor" and owner.get("supervisor_id") is None   # peer review of a field supervisor
+        if owner.get("supervisor_id") != user["id"] and not peer:
+            raise HTTPException(403, "هذه الفاتورة ليست ضمن فريقك")
     return b
 
 
@@ -174,6 +181,32 @@ def my_route(user: dict = Depends(collector_only)):
 
 # ------------------------------------------------------------------ A) registration
 
+def phone_protocol(cur, user: dict, phone: str, lat: float, lng: float) -> list[str] | None:
+    """Citizen-number rules (Phase 5). Returns the flags, or None when the number must be refused.
+    - a number on more than PHONE_HARD_LIMIT_PROPERTIES houses is refused
+    - more than MAX_PROPERTIES_PER_PHONE houses, or houses far apart, or a number this collector keeps reusing is flagged"""
+    flags: list[str] = []
+    cur.execute(
+        """SELECT p.lat, p.lng, p.registered_by FROM properties p JOIN citizens c ON c.id = p.citizen_id
+           WHERE c.whatsapp_phone = %s
+             AND (p.status = 'active' OR (p.status = 'pending_otp' AND p.registered_at > NOW() - INTERVAL '1 day'))""",
+        (phone,),
+    )
+    houses = cur.fetchall()
+    if len(houses) >= settings.PHONE_HARD_LIMIT_PROPERTIES:
+        audit.log(cur, user["id"], "phone_limit_blocked", "phone", phone[-4:], {"houses": len(houses)})
+        return None
+    if len(houses) >= settings.MAX_PROPERTIES_PER_PHONE:
+        flags.append("phone_many_properties")
+    if any(haversine_m(lat, lng, h["lat"], h["lng"]) > settings.PHONE_SPREAD_KM * 1000 for h in houses):
+        flags.append("phone_far_apart")
+    if sum(1 for h in houses if h["registered_by"] == user["id"]) >= 2:
+        flags.append("phone_reused_by_collector")
+    if flags:
+        audit.log(cur, user["id"], "phone_flagged", "phone", phone[-4:], {"flags": flags, "houses": len(houses)})
+    return flags
+
+
 class RegistrationIn(BaseModel):
     full_name: str = Field(..., min_length=3, max_length=120)
     address: str = Field(..., min_length=3, max_length=300)
@@ -184,6 +217,7 @@ class RegistrationIn(BaseModel):
     gps_accuracy_m: float | None = None
     meter_status: Literal["working", "none", "broken"] = "working"
     meter_serial: str | None = Field(None, max_length=50)
+    account_no: str | None = Field(None, max_length=40)       # the directorate's subscriber number, if on the old bill
     is_mocked: bool = False
 
 
@@ -196,6 +230,7 @@ def start_registration(body: RegistrationIn, user: dict = Depends(collector_only
 
     with get_conn() as conn, dict_cursor(conn) as cur:
         sector = _load_sector(cur, user["sector_id"])
+        runtime.check_switch(cur, "registration", user, sector["id"])
         if settings.ENFORCE_GEOFENCE and not point_in_polygon(body.lat, body.lng, sector["polygon"]):
             audit.log(cur, user["id"], "geofence_violation", "sector", sector["id"], {"lat": body.lat, "lng": body.lng})
             conn.commit()
@@ -208,16 +243,14 @@ def start_registration(body: RegistrationIn, user: dict = Depends(collector_only
             conn.commit()
             raise HTTPException(403, "لا يمكن استخدام رقم يعود لموظف في المنظومة")
 
-        flags = []
-        cur.execute(
-            """SELECT COUNT(*) AS n FROM properties p JOIN citizens c ON c.id = p.citizen_id
-               WHERE c.whatsapp_phone = %s AND p.status = 'active'""",
-            (phone,),
-        )
-        if cur.fetchone()["n"] >= settings.MAX_PROPERTIES_PER_PHONE:
-            flags.append("phone_many_properties")
+        flags = phone_protocol(cur, user, phone, body.lat, body.lng)
+        if flags is None:
+            conn.commit()
+            raise HTTPException(403, "هذا الرقم مسجل على عدد كبير من العقارات ولا يمكن استخدامه. اطلب رقم واتساب آخر من المواطن")
 
-        cur.execute("SELECT id, lat, lng FROM properties WHERE sector_id = %s AND status <> 'suspended'", (sector["id"],))
+        cur.execute("""SELECT id, lat, lng FROM properties WHERE sector_id = %s
+                       AND (status = 'active' OR (status = 'pending_otp' AND registered_at > NOW() - INTERVAL '1 day'))""",
+                    (sector["id"],))
         for other in cur.fetchall():
             if haversine_m(body.lat, body.lng, other["lat"], other["lng"]) <= settings.DUPLICATE_RADIUS_M:
                 flags.append("possible_duplicate_location")
@@ -230,10 +263,11 @@ def start_registration(body: RegistrationIn, user: dict = Depends(collector_only
         code = cur.fetchone()["code"]
         cur.execute(
             """INSERT INTO properties (property_code, citizen_id, sector_id, address, property_class, lat, lng,
-                                       gps_accuracy_m, meter_serial, meter_status, flags, registered_by)
-               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+                                       gps_accuracy_m, meter_serial, meter_status, flags, registered_by, directorate_account_no)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
             (code, citizen_id, sector["id"], body.address.strip(), body.property_class, body.lat, body.lng,
-             body.gps_accuracy_m, body.meter_serial, body.meter_status, json.dumps(flags), user["id"]),
+             body.gps_accuracy_m, body.meter_serial, body.meter_status, json.dumps(flags), user["id"],
+             (body.account_no or "").strip() or None),
         )
         property_id = cur.fetchone()["id"]
         ch, otp = codes.create_challenge(cur, purpose="registration", property_id=property_id, bill_id=None,
@@ -272,6 +306,8 @@ def verify_registration(property_id: int, body: VerifyIn, user: dict = Depends(c
             raise HTTPException(409, "تم تأكيد هذا التسجيل مسبقاً")
         res = verify(cur, user, purpose="registration", property_id=p["id"], bill_id=None, body=body)
         if res["ok"]:
+            if res.get("fast"):
+                cur.execute("""UPDATE properties SET flags = flags || '["fast_otp"]'::jsonb WHERE id = %s""", (p["id"],))
             cur.execute("UPDATE properties SET status = 'active', activated_at = NOW() WHERE id = %s", (p["id"],))
             cur.execute("UPDATE citizens SET phone_verified_at = NOW() WHERE id = %s", (p["citizen_id"],))
             audit.log(cur, user["id"], "registration_verified", "property", p["id"], {"method": res["method"]})
@@ -301,6 +337,9 @@ def create_bill(body: BillIn, user: dict = Depends(collector_only)):
         p = _load_property(cur, body.property_id, user, lock=True)
         if p["status"] != "active":
             raise HTTPException(409, "يجب تأكيد رقم المواطن (OTP) قبل الجباية")
+        runtime.check_switch(cur, "collection", user, p["sector_id"])
+        if body.method == "estimate":
+            runtime.check_switch(cur, "estimates", user, p["sector_id"])
 
         held = cash_in_hand(cur, user["id"])
         if held >= settings.CASH_IN_HAND_CAP_IQD:
@@ -380,6 +419,8 @@ def send_bill_otp(bill_id: int, user: dict = Depends(collector_only)):
     """Used for resend, and after a supervisor approves an estimate."""
     with get_conn() as conn, dict_cursor(conn) as cur:
         b = _load_bill(cur, bill_id, user, lock=True)
+        if b["collector_id"] != user["id"]:
+            raise HTTPException(403, "هذه الفاتورة لا تخصك")
         if b["status"] != "awaiting_otp":
             raise HTTPException(409, "لا يمكن إرسال رمز لهذه الفاتورة في حالتها الحالية")
         p = _load_property(cur, b["property_id"], user)
@@ -392,6 +433,8 @@ def verify_bill(bill_id: int, body: VerifyIn, user: dict = Depends(collector_onl
     receipt = None
     with get_conn() as conn, dict_cursor(conn) as cur:
         b = _load_bill(cur, bill_id, user, lock=True)
+        if b["collector_id"] != user["id"]:
+            raise HTTPException(403, "هذه الفاتورة لا تخصك")
         if b["status"] != "awaiting_otp":
             raise HTTPException(409, "هذه الفاتورة ليست بانتظار التأكيد")
         p = _load_property(cur, b["property_id"], user)
@@ -409,14 +452,19 @@ def verify_bill(bill_id: int, body: VerifyIn, user: dict = Depends(collector_onl
                     "INSERT INTO meter_readings (property_id, bill_id, reading, reading_type, photo_url, taken_by) VALUES (%s,%s,%s,%s,%s,%s)",
                     (p["id"], b["id"], b["current_reading"], rtype, b.get("photo_path"), user["id"]),
                 )
+            if res.get("fast"):
+                cur.execute("""UPDATE bills SET flags = flags || '["fast_otp"]'::jsonb WHERE id = %s""", (b["id"],))
             cur.execute("SELECT 'RCP-' || nextval('receipt_no_seq')::text AS no")
             receipt_no = cur.fetchone()["no"]
+            basis = gain.basis_for(cur, p["id"], b["period_days"])
+            share = company_share(b["gov_amount"])
+            gshare = min(gain.share_on_receipt(b["gov_amount"], basis), max(0.0, float(b["gov_amount"]) - share))
             cur.execute(
                 """INSERT INTO receipts (receipt_no, bill_id, property_id, collector_id, gov_amount, company_fee,
-                                         total_amount, verification_method, company_share)
-                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *""",
+                                         total_amount, verification_method, company_share, gain_basis, gain_share)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *""",
                 (receipt_no, b["id"], p["id"], user["id"], b["gov_amount"], b["company_fee"], b["total_amount"], res["method"],
-                 company_share(b["gov_amount"])),
+                 share, basis, gshare),
             )
             receipt = cur.fetchone()
             audit.log(cur, user["id"], "payment_verified", "bill", b["id"],
@@ -450,10 +498,6 @@ def verify_bill(bill_id: int, body: VerifyIn, user: dict = Depends(collector_onl
 def bill_photo(bill_id: int, user: dict = Depends(require_roles("collector", "supervisor", "command", "finance"))):
     with get_conn() as conn, dict_cursor(conn) as cur:
         b = _load_bill(cur, bill_id, user)
-        if user["role"] == "supervisor":
-            cur.execute("SELECT supervisor_id FROM employees WHERE id = %s", (b["collector_id"],))
-            if cur.fetchone()["supervisor_id"] != user["id"]:
-                raise HTTPException(403, "هذه الفاتورة ليست ضمن فريقك")
     photo = files.load_photo(b.get("photo_path"))
     if not photo:
         raise HTTPException(404, "لا توجد صورة لهذه الفاتورة")

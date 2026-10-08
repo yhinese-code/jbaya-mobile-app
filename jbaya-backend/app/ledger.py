@@ -27,20 +27,28 @@ CHART: dict[str, tuple[str, str, bool, bool, bool]] = {
     "3000": ("رأس المال والأرصدة الافتتاحية", "company", False, True, False),
     "4100": ("أجور خدمة الجباية", "company", False, False, False),
     "4110": ("حصة الشركة من مبالغ الماء", "company", False, False, False),
+    "4120": ("نسبة الشركة من الزيادة (35%)", "company", False, False, False),
     "4200": ("إيرادات أخرى (غرامات وزيادات)", "company", False, True, False),
     "5100": ("الرواتب والأجور", "company", True, False, False),
     "5200": ("تعويض مصاريف الموظفين", "company", True, False, False),
     "5300": ("نقص نقدي مشطوب", "company", True, True, False),
     "5400": ("مصاريف تشغيلية (عمولات مصرفية وغيرها)", "company", True, True, False),
 }
-GROUP_LABELS = {"place": "أين النقد", "trust": "الأمانة", "people": "على الموظفين وقيد التحقيق", "company": "حسابات الشركة (للمالك)"}
-INCOME = ("4100", "4110", "4200")
+GROUP_LABELS = {"place": "أين النقد", "trust": "الأمانة", "people": "على الموظفين وقيد التحقيق", "company": "حسابات الشركة"}
+INCOME = ("4100", "4110", "4120", "4200")
 COSTS = ("5100", "5200", "5300", "5400")
 PLACES = ("1010", "1020", "1030", "1050", "1100")
 
 
 def visible(code: str, role: str) -> bool:
-    return role in ("owner", "admin") or CHART[code][4]
+    """Owner/tech see everything. Finance sees cash, trust and people accounts, plus the company's INCOME
+    accounts when the tech panel allows it (finance.company_income) — never costs, capital or profit."""
+    if role in ("owner", "admin", "tech"):
+        return True
+    if CHART[code][4]:
+        return True
+    from . import runtime
+    return code in INCOME and role == "finance" and runtime.allowed("finance", "finance.company_income")
 
 
 def account_out(code: str) -> dict:

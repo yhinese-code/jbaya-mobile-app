@@ -443,7 +443,8 @@ def leave_queue(status: str = "pending", user: dict = Depends(supervisor_or_hr))
     """Supervisors see their team's requests waiting for them; HR sees everything."""
     with get_conn() as conn, dict_cursor(conn) as cur:
         if user["role"] == "supervisor":
-            cond, args = "e.supervisor_id = %s AND l.status = 'pending_supervisor'", [user["id"]]
+            # Phase 5: the supervisor only SEES his team's requests (to plan the field work); HR decides
+            cond, args = "e.supervisor_id = %s AND l.status IN ('pending_hr','pending_supervisor')", [user["id"]]
             if status != "pending":
                 cond, args = "e.supervisor_id = %s", [user["id"]]
         else:
@@ -470,11 +471,9 @@ def decide_leave(leave_id: int, body: DecisionIn, user: dict = Depends(superviso
         if not r:
             raise HTTPException(404, "الطلب غير موجود")
         if user["role"] == "supervisor":
-            if r["emp_supervisor"] != user["id"] or r["status"] != "pending_supervisor":
-                raise HTTPException(409, "الطلب ليس بانتظار موافقتك")
-            new = "pending_hr" if body.action == "approve" else "rejected"
-            cur.execute("UPDATE leave_requests SET status = %s, supervisor_id = %s, supervisor_at = NOW(), decision_note = %s WHERE id = %s",
-                        (new, user["id"], body.note, leave_id))
+            raise HTTPException(403, "الموافقة على الإجازات من صلاحية الموارد البشرية فقط")
+        if r["employee_id"] == user["id"]:
+            raise HTTPException(403, "لا يمكنك البت في طلب إجازتك. يبت فيه موظف آخر في الموارد البشرية")
         else:
             if r["status"] not in ("pending_supervisor", "pending_hr"):
                 raise HTTPException(409, "تمت معالجة الطلب مسبقاً")
