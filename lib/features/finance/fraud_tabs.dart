@@ -2,11 +2,12 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/format.dart';
+import '../../core/theme.dart';
 import '../shared/ui.dart';
 import 'charts.dart';
 
-Color riskColor(String? level) => level == 'high' ? Colors.red : (level == 'medium' ? Colors.orange : Colors.green);
-Color severityColor(String? s) => s == 'high' ? Colors.red : (s == 'medium' ? Colors.orange : Colors.blueGrey);
+Color riskColor(String? level) => level == 'high' ? AppColors.bad : (level == 'medium' ? AppColors.warn : AppColors.good);
+Color severityColor(String? s) => s == 'high' ? AppColors.bad : (s == 'medium' ? AppColors.warn : AppColors.muted);
 const severityLabels = {'high': 'مرتفع', 'medium': 'متوسط', 'low': 'منخفض'};
 
 Widget _daysPicker(int days, ValueChanged<int> onChanged) => SegmentedButton<int>(
@@ -41,7 +42,7 @@ class _RiskTabState extends State<RiskTab> {
           const SizedBox(width: 12),
           const Expanded(
             child: Text('درجة من 0 إلى 100 تجمع مؤشرات الاحتيال لكل جابٍ؛ افتح البطاقة لرؤية سبب كل نقطة.',
-                style: TextStyle(color: Colors.grey, fontSize: 12)),
+                style: TextStyle(color: AppColors.muted, fontSize: 12)),
           ),
         ]),
       ),
@@ -50,7 +51,7 @@ class _RiskTabState extends State<RiskTab> {
           path: '/finance/risk?days=$_days',
           builder: (context, data, reload) {
             final list = (data['collectors'] as List).cast<Map>();
-            if (list.isEmpty) return const Center(child: Text('لا يوجد جباة فعالون'));
+            if (list.isEmpty) return const EmptyState(title: 'لا يوجد جباة فعالون');
             final high = list.where((c) => c['level'] == 'high').length;
             final medium = list.where((c) => c['level'] == 'medium').length;
             return RefreshIndicator(
@@ -59,9 +60,9 @@ class _RiskTabState extends State<RiskTab> {
                 padding: const EdgeInsets.symmetric(horizontal: 12),
                 children: [
                   Wrap(spacing: 8, children: [
-                    StatusChip('مرتفع: $high', Colors.red),
-                    StatusChip('متوسط: $medium', Colors.orange),
-                    StatusChip('منخفض: ${list.length - high - medium}', Colors.green),
+                    StatusChip('مرتفع: $high', AppColors.bad),
+                    StatusChip('متوسط: $medium', AppColors.warn),
+                    StatusChip('منخفض: ${list.length - high - medium}', AppColors.good),
                   ]),
                   const SizedBox(height: 8),
                   ...list.map((c) => _RiskCard(c: c, days: _days)),
@@ -86,7 +87,10 @@ class _RiskCard extends StatelessWidget {
     final factors = (c['factors'] as List).cast<Map>();
     final reasons = (c['top_reasons'] as List).cast<String>();
     return Card(
+      clipBehavior: Clip.antiAlias,
       child: ExpansionTile(
+        shape: const Border(),
+        collapsedShape: const Border(),
         leading: SizedBox(
           width: 46,
           height: 46,
@@ -109,7 +113,7 @@ class _RiskCard extends StatelessWidget {
           ...factors.map((f) {
             final pts = (asNum(f['points']) ?? 0).toDouble();
             final w = (asNum(f['weight']) ?? 1).toDouble();
-            final fc = pts >= w * 0.6 ? Colors.red : (pts >= w * 0.3 ? Colors.orange : Colors.green);
+            final fc = pts >= w * 0.6 ? AppColors.bad : (pts >= w * 0.3 ? AppColors.warn : AppColors.good);
             return Padding(
               padding: const EdgeInsets.symmetric(vertical: 4),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -119,16 +123,19 @@ class _RiskCard extends StatelessWidget {
                     flex: 2,
                     child: LinearProgressIndicator(value: w > 0 ? pts / w : 0, minHeight: 8, color: fc, backgroundColor: fc.withValues(alpha: 0.1)),
                   ),
-                  SizedBox(width: 56, child: Text(' ${pts.toStringAsFixed(1)}/${w.toStringAsFixed(0)}', style: const TextStyle(fontSize: 12))),
+                  SizedBox(
+                      width: 56,
+                      child: Text('${pts.toStringAsFixed(1)}/${w.toStringAsFixed(0)}',
+                          textAlign: TextAlign.end, style: const TextStyle(fontSize: 12, fontFeatures: [FontFeature.tabularFigures()]))),
                 ]),
-                Text('${f['display']}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                Text('${f['display']}', style: const TextStyle(fontSize: 12, color: AppColors.muted)),
               ]),
             );
           }),
           if (c['low_ticket'] != null)
             Align(
               alignment: AlignmentDirectional.centerStart,
-              child: Text('متوسط الفاتورة منخفض: ${c['low_ticket']}', style: const TextStyle(color: Colors.orange)),
+              child: Text('متوسط الفاتورة منخفض: ${c['low_ticket']}', style: const TextStyle(color: AppColors.warn)),
             ),
           Align(
             alignment: AlignmentDirectional.centerStart,
@@ -137,7 +144,7 @@ class _RiskCard extends StatelessWidget {
               label: const Text('تحليل بنفورد والأرقام لهذا الجابي'),
               onPressed: () => Navigator.of(context).push(MaterialPageRoute(
                 builder: (_) => Scaffold(
-                  appBar: AppBar(title: Text('تحليل الأرقام - ${c['employee_code']}')),
+                  appBar: portalAppBar(title: 'تحليل الأرقام - ${c['employee_code']}', color: AppColors.finance),
                   body: BenfordTab(collector: '${c['employee_code']}'),
                 ),
               )),
@@ -216,7 +223,7 @@ class _AnomaliesTabState extends State<AnomaliesTab> {
                   ]),
                   const SizedBox(height: 8),
                   if (items.isEmpty)
-                    const Padding(padding: EdgeInsets.all(32), child: Center(child: Text('لا توجد حالات شاذة ضمن هذا التصفية'))),
+                    const EmptyState(icon: Icons.verified_outlined, title: 'لا توجد حالات شاذة ضمن هذه التصفية'),
                   ...items.map((a) {
                     final color = severityColor(a['severity'] as String?);
                     return Card(
@@ -265,41 +272,39 @@ class _BenfordTabState extends State<BenfordTab> {
   }
 
   Color _levelColor(String? l) => switch (l) {
-        'close' => Colors.green,
-        'acceptable' => Colors.teal,
-        'marginal' => Colors.orange,
-        'nonconformity' => Colors.red,
-        _ => Colors.grey,
+        'close' => AppColors.good,
+        'acceptable' => AppColors.brand,
+        'marginal' => AppColors.warn,
+        'nonconformity' => AppColors.bad,
+        _ => AppColors.muted,
       };
 
   Widget _testCard(String title, Map t, {String refName = 'قانون بنفورد'}) {
     final obs = (t['observed'] as List).map((v) => (asNum(v) ?? 0).toDouble()).toList();
     final exp = (t['expected'] as List).map((v) => (asNum(v) ?? 0).toDouble()).toList();
     final suspicious = (t['suspicious_digits'] as List? ?? []).cast<int>();
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    return AppCard(
+      padding: const EdgeInsets.all(Gap.md),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Wrap(spacing: 8, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
             Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
             StatusChip('${t['label']}', _levelColor(t['level'] as String?)),
             Text('n = ${t['n']} | MAD = ${t['mad'] ?? '-'} | χ² = ${t['chi2'] ?? '-'} | p = ${t['p_value'] ?? '-'}',
-                style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                style: const TextStyle(fontSize: 12, color: AppColors.muted)),
           ]),
           const SizedBox(height: 8),
           SimpleBarChart(
             labels: List.generate(9, (i) => '${i + 1}'),
             values: obs.map((v) => v * 100).toList(),
             reference: exp.map((v) => v * 100).toList(),
-            colors: List.generate(9, (i) => suspicious.contains(i + 1) ? Colors.red.shade300 : Colors.indigo),
+            colors: List.generate(9, (i) => suspicious.contains(i + 1) ? AppColors.bad : AppColors.brand),
             yFormat: (v) => '${v.toStringAsFixed(0)}%',
             valueName: 'الفعلي (أول رقم)',
             referenceName: refName,
           ),
           if (suspicious.isNotEmpty)
-            Text('أرقام منحرفة إحصائياً: ${suspicious.join('، ')}', style: const TextStyle(color: Colors.red, fontSize: 12)),
+            Text('أرقام منحرفة إحصائياً: ${suspicious.join('، ')}', style: const TextStyle(color: AppColors.bad, fontSize: 12)),
         ]),
-      ),
     );
   }
 
@@ -363,35 +368,36 @@ class _BenfordTabState extends State<BenfordTab> {
           children: [
             _testCard('${d['dataset_label']}${_collector != null ? ' - $_collector' : ' - الشركة كلها'} مقابل قانون بنفورد', d['law'] as Map),
             if (d['vs_peers'] != null) _testCard('مقارنة مع بقية الجباة', d['vs_peers'] as Map, refName: 'توزيع بقية الجباة'),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            AppCard(
+              padding: const EdgeInsets.all(Gap.md),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Wrap(spacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
                     const Text('اختبار الرقم الأخير لقراءات العدادات', style: TextStyle(fontWeight: FontWeight.bold)),
-                    if (ld['suspicious'] == true) const StatusChip('تفضيل أرقام مشبوه', Colors.red),
+                    if (ld['suspicious'] == true) const StatusChip('تفضيل أرقام مشبوه', AppColors.bad),
                     Text('n = ${ld['n']} | تنتهي بـ 0 أو 5: ${pctText(ld['share_0_5'])} (الطبيعي 20%) | p = ${ld['p_value'] ?? '-'}',
-                        style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                        style: const TextStyle(fontSize: 12, color: AppColors.muted)),
                   ]),
                   const SizedBox(height: 8),
                   SimpleBarChart(
                     labels: List.generate(10, (i) => '$i'),
                     values: ldCounts.map((c) => ldN > 0 ? c / ldN * 100 : 0.0).toList(),
                     reference: List.filled(10, 10.0),
-                    colors: List.generate(10, (i) => i == 0 || i == 5 ? Colors.orange : Colors.teal),
+                    colors: List.generate(10, (i) => i == 0 || i == 5 ? AppColors.warn : AppColors.brand),
                     yFormat: (v) => '${v.toStringAsFixed(0)}%',
                     height: 180,
                     valueName: 'الفعلي (آخر رقم)',
                     referenceName: 'المتوقع 10%',
                   ),
                 ]),
-              ),
             ),
             const SectionTitle('حسب الجابي'),
             Card(
               child: SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: DataTable(
+                  headingRowColor: WidgetStateProperty.all(AppColors.paper),
+                  headingTextStyle: const TextStyle(fontFamily: AppTheme.fontFamily, fontWeight: FontWeight.w600, color: AppColors.muted, fontSize: 13),
+                  dataTextStyle: const TextStyle(fontFamily: AppTheme.fontFamily, color: AppColors.ink, fontSize: 13, fontFeatures: [FontFeature.tabularFigures()]),
                   showCheckboxColumn: false,
                   columns: const [
                     DataColumn(label: Text('الجابي')),
@@ -413,7 +419,7 @@ class _BenfordTabState extends State<BenfordTab> {
                                   _levelColor(r['level'] as String?))),
                               DataCell(Text('${r['readings_n']}')),
                               DataCell(Text(pctText(r['share_0_5']),
-                                  style: TextStyle(color: r['digit_preference'] == true ? Colors.red : null))),
+                                  style: TextStyle(color: r['digit_preference'] == true ? AppColors.bad : null))),
                             ],
                           ))
                       .toList(),
@@ -422,7 +428,7 @@ class _BenfordTabState extends State<BenfordTab> {
             ),
             ...(d['notes'] as List).map((n) => Padding(
                   padding: const EdgeInsets.only(top: 6),
-                  child: Text('• $n', style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                  child: Text('• $n', style: const TextStyle(color: AppColors.muted, fontSize: 12)),
                 )),
           ],
         );

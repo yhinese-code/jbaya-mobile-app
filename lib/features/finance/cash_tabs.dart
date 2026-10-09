@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../core/format.dart';
 import '../../core/session.dart';
+import '../../core/theme.dart';
 import '../shared/ui.dart';
 import 'charts.dart';
 import 'deposits_verification_tab.dart';
@@ -62,21 +63,31 @@ class _CountDialogState extends State<_CountDialog> {
         width: 380,
         child: SingleChildScrollView(
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-            const Text('عدّ النقد قبل أن ترى المبلغ المتوقع. أدخل عدد الأوراق من كل فئة:', style: TextStyle(color: Colors.grey)),
+            const Text('عدّ النقد قبل أن ترى المبلغ المتوقع. أدخل عدد الأوراق من كل فئة:', style: TextStyle(color: AppColors.muted)),
             const SizedBox(height: 8),
             ..._notes.map((n) => Padding(
                   padding: const EdgeInsets.symmetric(vertical: 3),
                   child: Row(children: [
-                    SizedBox(width: 110, child: Text('ورقة ${formatNumber(n)}')),
+                    Expanded(flex: 3, child: Text('ورقة ${formatNumber(n)}', style: const TextStyle(fontFeatures: [FontFeature.tabularFigures()]))),
                     Expanded(
+                      flex: 3,
                       child: TextField(
                         controller: _c[n],
                         keyboardType: TextInputType.number,
+                        textAlign: TextAlign.center,
                         onChanged: (_) => setState(() {}),
                         decoration: const InputDecoration(isDense: true, border: OutlineInputBorder(), hintText: '0'),
                       ),
                     ),
-                    SizedBox(width: 110, child: Text(formatIqd(n * _n(n)), textAlign: TextAlign.end)),
+                    const SizedBox(width: Gap.sm),
+                    Expanded(
+                      flex: 4,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: AlignmentDirectional.centerEnd,
+                        child: Text(formatIqd(n * _n(n)), style: const TextStyle(fontFeatures: [FontFeature.tabularFigures()])),
+                      ),
+                    ),
                   ]),
                 )),
             const Divider(),
@@ -155,7 +166,7 @@ class _HandoverTabState extends State<HandoverTab> {
             const SizedBox(height: 8),
             TextField(controller: note, decoration: const InputDecoration(labelText: 'السبب (إلزامي)')),
             const SizedBox(height: 6),
-            const Text('الشطب فوق الحد المسموح ينتظر موافقة المالك.', style: TextStyle(color: Colors.grey, fontSize: 12)),
+            const Text('الشطب فوق الحد المسموح ينتظر موافقة المالك.', style: TextStyle(color: AppColors.muted, fontSize: 12)),
           ]),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء')),
@@ -178,32 +189,30 @@ class _HandoverTabState extends State<HandoverTab> {
 
   Widget _resultCard(Map r) {
     final diff = (asNum(r['difference']) ?? 0).toDouble();
-    final color = diff == 0 ? Colors.green : Colors.red;
-    return Card(
-      color: color.withValues(alpha: 0.07),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    final color = diff == 0 ? AppColors.good : AppColors.bad;
+    return AppCard(
+      accent: color,
+      padding: const EdgeInsets.all(Gap.md),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('تم الاستلام من ${r['supervisor_name']}', style: const TextStyle(fontWeight: FontWeight.bold)),
           Text('عددتَ: ${formatIqd(asNum(r['counted_cash']))} | المفروض: ${formatIqd(asNum(r['expected_cash']))}'),
           Text(diff == 0 ? 'مطابق تماماً' : (diff < 0 ? 'نقص ${formatIqd(-diff)}' : 'زيادة ${formatIqd(diff)}'),
               style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 16)),
           if ((asNum(r['left_with_supervisor']) ?? 0) > 0)
-            Text('بقيت ${r['left_with_supervisor']} مطابقات لم يعالج المشرف فروقاتها بعد، فلم تُسلَّم.', style: const TextStyle(color: Colors.orange)),
+            Text('بقيت ${r['left_with_supervisor']} مطابقات لم يعالج المشرف فروقاتها بعد، فلم تُسلَّم.', style: const TextStyle(color: AppColors.warn)),
           if (r['resolution_status'] == 'pending' && canWriteFinance)
             TextButton.icon(onPressed: () => _resolve(r), icon: const Icon(Icons.gavel), label: const Text('قرر ماذا نفعل بالفرق')),
         ]),
-      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
     return ListView(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(Gap.md),
       children: [
         const Text('المشرف يحضر إلى المقر ويسلّم النقد. عُدّه أولاً؛ النظام يكشف المبلغ المفروض بعد الحفظ فقط.',
-            style: TextStyle(color: Colors.grey)),
+            style: TextStyle(color: AppColors.muted)),
         if (_last != null) _resultCard(_last!),
         const SectionTitle('مشرفون لديهم نقد للتسليم'),
         ApiView(
@@ -211,20 +220,45 @@ class _HandoverTabState extends State<HandoverTab> {
           path: '/finance/handovers/waiting',
           builder: (context, data, reload) {
             final list = (data as List).cast<Map>();
-            if (list.isEmpty) return const Padding(padding: EdgeInsets.all(16), child: Text('لا يوجد نقد بانتظار التسليم', style: TextStyle(color: Colors.grey)));
+            if (list.isEmpty) {
+              return const EmptyState(
+                icon: Icons.payments_outlined,
+                title: 'لا يوجد نقد بانتظار التسليم',
+                message: 'يظهر هنا المشرفون الذين أغلقوا صناديق جباتهم ولم يسلّموا النقد بعد',
+              );
+            }
             return Column(
               children: list
-                  .map((s) => Card(
-                        child: ListTile(
-                          leading: const CircleAvatar(child: Icon(Icons.person)),
-                          title: Text('${s['employee_code']} - ${s['full_name']}'),
-                          subtitle: Text('نقد ${s['reconciliations']} تسليم من الجباة (${s['collectors']}) | منذ ${formatDate(s['oldest'])}'
-                              '${(asNum(s['unresolved']) ?? 0) > 0 ? '\n${s['unresolved']} فروقات لم يعالجها المشرف بعد' : ''}'),
-                          isThreeLine: (asNum(s['unresolved']) ?? 0) > 0,
-                          trailing: canWriteFinance
-                              ? ElevatedButton.icon(onPressed: () => _receive(s), icon: const Icon(Icons.payments), label: const Text('استلام وعدّ'))
-                              : null,
-                        ),
+                  .map((s) => AppCard(
+                        padding: const EdgeInsets.all(Gap.md),
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Row(children: [
+                            CircleAvatar(
+                              backgroundColor: AppColors.finance.withValues(alpha: 0.10),
+                              child: const Icon(Icons.person, color: AppColors.finance),
+                            ),
+                            const SizedBox(width: Gap.md),
+                            Expanded(
+                              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                Text('${s['employee_code']} - ${s['full_name']}', style: const TextStyle(fontWeight: FontWeight.w600)),
+                                Text('نقد ${s['reconciliations']} تسليم من الجباة (${s['collectors']}) | منذ ${formatDate(s['oldest'])}',
+                                    style: const TextStyle(color: AppColors.muted, fontSize: 13)),
+                              ]),
+                            ),
+                          ]),
+                          if ((asNum(s['unresolved']) ?? 0) > 0) ...[
+                            const SizedBox(height: Gap.sm),
+                            StatusChip('${s['unresolved']} فروقات لم يعالجها المشرف بعد', AppColors.warn),
+                          ],
+                          if (canWriteFinance) ...[
+                            const SizedBox(height: Gap.sm),
+                            Align(
+                              alignment: AlignmentDirectional.centerEnd,
+                              child: ElevatedButton.icon(
+                                  onPressed: () => _receive(s), icon: const Icon(Icons.payments), label: const Text('استلام وعدّ')),
+                            ),
+                          ],
+                        ]),
                       ))
                   .toList(),
             );
@@ -236,24 +270,30 @@ class _HandoverTabState extends State<HandoverTab> {
           path: '/finance/handovers',
           builder: (context, data, reload) {
             final list = (data as List).cast<Map>();
-            if (list.isEmpty) return const Text('لا يوجد بعد', style: TextStyle(color: Colors.grey));
+            if (list.isEmpty) {
+              return const EmptyState(icon: Icons.history, title: 'لم يُستلم نقد من المشرفين بعد');
+            }
             return Column(
               children: list.map((h) {
                 final diff = (asNum(h['difference']) ?? 0).toDouble();
                 final waiting = h['resolution_status'] == 'pending';
                 final owner = h['resolution_status'] == 'pending_owner';
-                return Card(
-                  child: ListTile(
-                    title: Text('${h['supervisor_code']} - ${h['supervisor_name']} | ${formatIqd(asNum(h['counted_cash']))}'),
-                    subtitle: Text('${formatDate(h['created_at'])} ${formatTime(h['created_at'])} | استلم: ${h['received_by']}'
-                        '${h['resolution_label'] != null ? ' | ${h['resolution_label']}' : ''}'),
-                    trailing: Wrap(spacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
+                return AppCard(
+                  padding: const EdgeInsets.all(Gap.md),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('${h['supervisor_code']} - ${h['supervisor_name']} | ${formatIqd(asNum(h['counted_cash']))}',
+                        style: const TextStyle(fontWeight: FontWeight.w600)),
+                    Text('${formatDate(h['created_at'])} ${formatTime(h['created_at'])} | استلم: ${h['received_by']}'
+                        '${h['resolution_label'] != null ? ' | ${h['resolution_label']}' : ''}',
+                        style: const TextStyle(color: AppColors.muted, fontSize: 13)),
+                    const SizedBox(height: Gap.sm),
+                    Wrap(spacing: 6, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
                       StatusChip(diff == 0 ? 'مطابق' : (diff < 0 ? 'نقص ${formatIqd(-diff)}' : 'زيادة ${formatIqd(diff)}'),
-                          diff == 0 ? Colors.green : Colors.red),
-                      if (owner) const StatusChip('بانتظار المالك', Colors.purple),
+                          diff == 0 ? AppColors.good : AppColors.bad),
+                      if (owner) const StatusChip('بانتظار المالك', AppColors.info),
                       if (waiting && canWriteFinance) OutlinedButton(onPressed: () => _resolve(h), child: const Text('قرار')),
                     ]),
-                  ),
+                  ]),
                 );
               }).toList(),
             );
@@ -320,11 +360,11 @@ class _CashBoxTabState extends State<CashBoxTab> {
         return RefreshIndicator(
           onRefresh: reload,
           child: ListView(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(Gap.md),
             children: [
               Wrap(spacing: 8, runSpacing: 8, children: [
-                KpiCard(label: 'صندوق المالية (نقد في المقر)', value: formatIqd(box), icon: Icons.point_of_sale, color: Colors.teal),
-                KpiCard(label: 'المصرف', value: formatIqd(bank), icon: Icons.account_balance, color: Colors.indigo),
+                KpiCard(label: 'صندوق المالية (نقد في المقر)', value: formatIqd(box), icon: Icons.point_of_sale, color: AppColors.brand),
+                KpiCard(label: 'المصرف', value: formatIqd(bank), icon: Icons.account_balance, color: AppColors.brand),
               ]),
               if (canWriteFinance)
                 Padding(
@@ -335,11 +375,11 @@ class _CashBoxTabState extends State<CashBoxTab> {
                   ]),
                 ),
               const SectionTitle('الحركات'),
-              if (items.isEmpty) const Text('لا حركات بعد', style: TextStyle(color: Colors.grey)),
+              if (items.isEmpty) const EmptyState(icon: Icons.swap_vert, title: 'لا توجد حركات بين الصندوق والمصرف بعد'),
               ...items.map((t) => Card(
                     child: ListTile(
                       leading: Icon(t['direction'] == 'to_bank' ? Icons.arrow_upward : Icons.arrow_downward,
-                          color: t['direction'] == 'to_bank' ? Colors.indigo : Colors.teal),
+                          color: t['direction'] == 'to_bank' ? AppColors.brand : AppColors.brand),
                       title: Text('${t['direction'] == 'to_bank' ? 'إيداع في المصرف' : 'سحب إلى الصندوق'}: ${formatIqd(asNum(t['amount']))}'),
                       subtitle: Text('${formatDate(t['created_at'])} | ${t['by']}${t['reference'] != null ? ' | ${t['reference']}' : ''}'),
                     ),
@@ -389,7 +429,7 @@ class _TrustTabState extends State<TrustTab> {
                 onSelectionChanged: (s) => setD(() => source = s.first),
               ),
               Text('في المصرف ${compactIqd((asNum(d['bank']) ?? 0).toDouble())} | في الصندوق ${compactIqd((asNum(d['cash_box']) ?? 0).toDouble())}',
-                  style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                  style: const TextStyle(fontSize: 12, color: AppColors.muted)),
               TextField(controller: amount, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'المبلغ')),
               TextField(controller: ref, decoration: const InputDecoration(labelText: 'رقم الحوالة أو وصل الاستلام')),
               TextField(controller: note, decoration: const InputDecoration(labelText: 'ملاحظة (اختياري)')),
@@ -429,20 +469,20 @@ class _TrustTabState extends State<TrustTab> {
         return RefreshIndicator(
           onRefresh: reload,
           child: ListView(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(Gap.md),
             children: [
-              const Card(
-                child: Padding(
-                  padding: EdgeInsets.all(12),
-                  child: Text('أمانة دائرة الماء: المبلغ الذي يدفعه المواطن عن الماء (بعد حصة الشركة المتفق عليها). '
-                      'نحفظه نيابةً عن الدائرة ونسلّمه لها؛ هو ليس دخلاً للشركة وليس ديناً عليها.'),
-                ),
+              const NoticeBanner(
+                icon: Icons.lock_outline,
+                title: 'أمانة دائرة الماء ليست دخلاً للشركة',
+                message: 'المبلغ الذي يدفعه المواطن عن الماء (بعد حصة الشركة المتفق عليها). '
+                    'نحفظه نيابةً عن الدائرة ونسلّمه لها؛ هو ليس دخلاً للشركة وليس ديناً عليها.',
               ),
+              const SizedBox(height: Gap.sm),
               Wrap(spacing: 8, runSpacing: 8, children: [
-                KpiCard(label: 'محفوظة لدينا الآن', value: formatIqd(held), icon: Icons.lock, color: held > 0 ? Colors.deepOrange : Colors.green),
-                KpiCard(label: 'حُصّلت هذا الشهر', value: formatIqd(asNum(d['collected_this_month'])), icon: Icons.download, color: Colors.blueGrey),
-                KpiCard(label: 'سُلّمت هذا الشهر', value: formatIqd(asNum(d['handed_over_this_month'])), icon: Icons.upload, color: Colors.indigo),
-                KpiCard(label: 'سُلّمت منذ البداية', value: formatIqd(asNum(d['handed_over_total'])), icon: Icons.history, color: Colors.teal),
+                KpiCard(label: 'محفوظة لدينا الآن', value: formatIqd(held), icon: Icons.lock, color: held > 0 ? AppColors.warn : AppColors.good),
+                KpiCard(label: 'حُصّلت هذا الشهر', value: formatIqd(asNum(d['collected_this_month'])), icon: Icons.download, color: AppColors.muted),
+                KpiCard(label: 'سُلّمت هذا الشهر', value: formatIqd(asNum(d['handed_over_this_month'])), icon: Icons.upload, color: AppColors.brand),
+                KpiCard(label: 'سُلّمت منذ البداية', value: formatIqd(asNum(d['handed_over_total'])), icon: Icons.history, color: AppColors.brand),
               ]),
               if (canWriteFinance)
                 Padding(
@@ -453,10 +493,10 @@ class _TrustTabState extends State<TrustTab> {
                   ),
                 ),
               const SectionTitle('سجل التسليم'),
-              if (items.isEmpty) const Text('لم يُسلَّم شيء بعد', style: TextStyle(color: Colors.grey)),
+              if (items.isEmpty) const EmptyState(icon: Icons.outbox_outlined, title: 'لم يُسلَّم شيء من الأمانة للدائرة بعد'),
               ...items.map((r) => Card(
                     child: ListTile(
-                      leading: const Icon(Icons.outbox, color: Colors.indigo),
+                      leading: const Icon(Icons.outbox, color: AppColors.brand),
                       title: Text('${formatIqd(asNum(r['amount']))} | ${r['bank_ref']}'),
                       subtitle: Text('${formatDate(r['remitted_at'])} | ${r['source'] == 'cash' ? 'نقداً من الصندوق' : 'من المصرف'} | ${r['created_by']}'
                           '${r['note'] != null ? ' | ${r['note']}' : ''}'),
@@ -499,39 +539,39 @@ class _DifferencesTabState extends State<DifferencesTab> {
         return RefreshIndicator(
           onRefresh: reload,
           child: ListView(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(Gap.md),
             children: [
               const Text('فروقات نقدية تحتاج قراراً: فروقات الجباة التي أحالها المشرفون، وفروقات المشرفين عند العدّ في المقر. '
-                  'الشطب فوق الحد المسموح ينتظر موافقة المالك.', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                  'الشطب فوق الحد المسموح ينتظر موافقة المالك.', style: TextStyle(color: AppColors.muted, fontSize: 12)),
               const SizedBox(height: 8),
-              if (list.isEmpty) const Padding(padding: EdgeInsets.all(32), child: Center(child: Text('لا فروقات معلقة'))),
+              if (list.isEmpty) const EmptyState(icon: Icons.task_alt, title: 'لا توجد فروقات بانتظار القرار'),
               ...list.map((r) {
                 final diff = (asNum(r['difference']) ?? 0).toDouble();
                 final field = r['kind'] == 'field';
                 final owner = r['waiting_for_owner'] == true;
-                return Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                return AppCard(
+                  accent: diff < 0 ? AppColors.bad : AppColors.warn,
+                  padding: const EdgeInsets.all(Gap.md),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Row(children: [
                         Expanded(
                           child: Text('${field ? 'الجابي' : 'المشرف'} ${r['person_code']} - ${r['person_name']}',
                               style: const TextStyle(fontWeight: FontWeight.bold)),
                         ),
-                        StatusChip(diff < 0 ? 'نقص ${formatIqd(-diff)}' : 'زيادة ${formatIqd(diff)}', diff < 0 ? Colors.red : Colors.orange),
+                        StatusChip(diff < 0 ? 'نقص ${formatIqd(-diff)}' : 'زيادة ${formatIqd(diff)}', diff < 0 ? AppColors.bad : AppColors.warn),
                       ]),
                       Text('${field ? 'عند التسليم للمشرف' : 'عند العدّ في المقر'} | المفروض ${formatIqd(asNum(r['expected_cash']))} | '
                           'المعدود ${formatIqd(asNum(r['counted_cash']))} | ${formatDate(r['created_at'])}'),
-                      if (r['note'] != null) Text('${r['note']}', style: const TextStyle(color: Colors.grey)),
-                      if (owner) const Padding(padding: EdgeInsets.only(top: 6), child: StatusChip('بانتظار موافقة المالك', Colors.purple)),
+                      if (r['note'] != null) Text('${r['note']}', style: const TextStyle(color: AppColors.muted)),
+                      if (owner) const Padding(padding: EdgeInsets.only(top: 6), child: StatusChip('بانتظار موافقة المالك', AppColors.info)),
+                      if (!owner && canWriteFinance) const SizedBox(height: Gap.sm),
                       if (!owner && canWriteFinance)
-                        Wrap(spacing: 8, children: [
+                        Wrap(spacing: Gap.sm, runSpacing: Gap.sm, children: [
                           if (field && diff < 0) ElevatedButton(onPressed: () => _closeField(r, 'salary_deduction'), child: const Text('خصم من الراتب')),
                           if (field) OutlinedButton(onPressed: () => _closeField(r, 'write_off'), child: Text(diff < 0 ? 'شطب كخسارة' : 'تسجيل كإيراد')),
-                          if (!field) const Text('افتح «استلام النقد» لاتخاذ القرار', style: TextStyle(color: Colors.grey)),
+                          if (!field) const Text('افتح «استلام النقد» لاتخاذ القرار', style: TextStyle(color: AppColors.muted)),
                         ]),
                     ]),
-                  ),
                 );
               }),
             ],
@@ -572,19 +612,21 @@ class _BookAccounts extends StatelessWidget {
         return RefreshIndicator(
           onRefresh: reload,
           child: ListView(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(Gap.md),
             children: [
               const Text('كل حساب يُظهر ما دخله وما خرج منه وما فيه الآن. الأرقام تُحسب تلقائياً من العمل الميداني؛ اضغط على حساب لرؤية تفاصيله.',
-                  style: TextStyle(color: Colors.grey, fontSize: 12)),
+                  style: TextStyle(color: AppColors.muted, fontSize: 12)),
               if (legacy)
-                Card(
-                  color: Colors.amber.withValues(alpha: 0.1),
-                  child: ListTile(
-                    leading: const Icon(Icons.info, color: Colors.orange),
-                    title: const Text('توجد إيداعات مصرفية قديمة من المشرفين بانتظار التدقيق'),
-                    trailing: TextButton(
+                NoticeBanner(
+                  tone: Tone.warn,
+                  title: 'توجد إيداعات مصرفية قديمة من المشرفين بانتظار التدقيق',
+                  action: Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: OutlinedButton(
                       onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                          builder: (_) => Scaffold(appBar: AppBar(title: const Text('إيداعات قديمة')), body: const DepositsVerificationTab()))),
+                          builder: (_) => Scaffold(
+                              appBar: portalAppBar(title: 'إيداعات قديمة', color: AppColors.finance),
+                              body: const DepositsVerificationTab()))),
                       child: const Text('تدقيق'),
                     ),
                   ),
@@ -597,7 +639,7 @@ class _BookAccounts extends StatelessWidget {
                         child: ListTile(
                           title: Text('${a['name']}'),
                           subtitle: Text('دخل ${formatIqd(asNum(a['in']))} | خرج ${formatIqd(asNum(a['out']))}'),
-                          trailing: Text(formatIqd(bal), style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: bal < 0 ? Colors.red : null)),
+                          trailing: Text(formatIqd(bal), style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: bal < 0 ? AppColors.bad : null)),
                           onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => AccountPage(code: '${a['code']}', name: '${a['name']}'))),
                         ),
                       );
@@ -639,10 +681,10 @@ class _AccountPageState extends State<AccountPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(widget.name)),
+      appBar: portalAppBar(title: widget.name, color: AppColors.finance),
       body: Column(children: [
         Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(Gap.md),
           child: Wrap(spacing: 8, children: [
             OutlinedButton(onPressed: () => _pick(true), child: Text('من ${apiDate(_start)}')),
             OutlinedButton(onPressed: () => _pick(false), child: Text('إلى ${apiDate(_end)}')),
@@ -654,7 +696,7 @@ class _AccountPageState extends State<AccountPage> {
             builder: (context, d, reload) {
               final lines = (d['lines'] as List).cast<Map>();
               return ListView(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
+                padding: const EdgeInsets.symmetric(horizontal: Gap.md),
                 children: [
                   Wrap(spacing: 8, runSpacing: 8, children: [
                     Chip(label: Text('كان فيه ${formatIqd(asNum(d['opening']))}')),
@@ -662,21 +704,21 @@ class _AccountPageState extends State<AccountPage> {
                     Chip(label: Text('خرج ${formatIqd(asNum(d['total_out']))}')),
                     Chip(label: Text('فيه الآن ${formatIqd(asNum(d['closing']))}', style: const TextStyle(fontWeight: FontWeight.bold))),
                   ]),
-                  if (d['truncated'] == true) const Text('عُرضت أول 500 حركة؛ ضيّق الفترة.', style: TextStyle(color: Colors.orange)),
-                  if (lines.isEmpty) const Padding(padding: EdgeInsets.all(24), child: Center(child: Text('لا حركات في هذه الفترة'))),
+                  if (d['truncated'] == true) const NoticeBanner(tone: Tone.warn, title: 'عُرضت أول 500 حركة؛ ضيّق الفترة.'),
+                  if (lines.isEmpty) const EmptyState(title: 'لا حركات في هذه الفترة'),
                   ...lines.map((l) {
                     final i = (asNum(l['in']) ?? 0).toDouble();
                     final o = (asNum(l['out']) ?? 0).toDouble();
                     return Card(
                       child: ListTile(
                         dense: true,
-                        leading: Icon(i > 0 ? Icons.add_circle : Icons.remove_circle, color: i > 0 ? Colors.green : Colors.red),
+                        leading: Icon(i > 0 ? Icons.add_circle : Icons.remove_circle, color: i > 0 ? AppColors.good : AppColors.bad),
                         title: Text('${l['memo'] ?? ''}${l['employee_name'] != null ? ' — ${l['employee_name']}' : ''}'),
                         subtitle: Text('${formatDate(l['at'])} ${formatTime(l['at'])} | ${sourceLabels[l['source']] ?? l['source']} ${l['ref']}'),
                         trailing: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.end, children: [
                           Text(i > 0 ? '+${formatNumber(i)}' : '-${formatNumber(o)}',
-                              style: TextStyle(fontWeight: FontWeight.bold, color: i > 0 ? Colors.green : Colors.red)),
-                          Text('الرصيد ${formatNumber(asNum(l['balance']))}', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                              style: TextStyle(fontWeight: FontWeight.bold, color: i > 0 ? AppColors.good : AppColors.bad)),
+                          Text('الرصيد ${formatNumber(asNum(l['balance']))}', style: const TextStyle(fontSize: 11, color: AppColors.muted)),
                         ]),
                       ),
                     );
@@ -740,7 +782,7 @@ class _CorrectionsState extends State<_Corrections> {
                 child: Text('التاريخ ${apiDate(day)}'),
               ),
               const SizedBox(height: 6),
-              const Text('التصحيح الكبير ينتظر موافقة المالك قبل أن يظهر في الحسابات.', style: TextStyle(color: Colors.grey, fontSize: 12)),
+              const Text('التصحيح الكبير ينتظر موافقة المالك قبل أن يظهر في الحسابات.', style: TextStyle(color: AppColors.muted, fontSize: 12)),
             ]),
           ),
           actions: [
@@ -777,7 +819,7 @@ class _CorrectionsState extends State<_Corrections> {
       builder: (context, data, reload) {
         final list = (data as List).cast<Map>();
         return ListView(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(Gap.md),
           children: [
             if (canWriteFinance || Session.instance.role == 'owner')
               Align(
@@ -787,9 +829,9 @@ class _CorrectionsState extends State<_Corrections> {
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 6),
               child: Text('للأشياء التي لا يراها النظام فقط: عمولات المصرف، مصاريف نقدية، تسديد الضرائب، الأرصدة الافتتاحية. '
-                  'لا يُحذف تصحيح؛ يُلغى بتصحيح معاكس.', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                  'لا يُحذف تصحيح؛ يُلغى بتصحيح معاكس.', style: TextStyle(color: AppColors.muted, fontSize: 12)),
             ),
-            if (list.isEmpty) const Padding(padding: EdgeInsets.all(24), child: Center(child: Text('لا تصحيحات'))),
+            if (list.isEmpty) const EmptyState(icon: Icons.edit_note, title: 'لا توجد تصحيحات يدوية'),
             ...list.map((e) {
               final lines = (e['lines'] as List).cast<Map>();
               final status = '${e['status']}';
@@ -810,7 +852,7 @@ class _CorrectionsState extends State<_Corrections> {
                               },
                               child: const Text('إلغاء'))
                           : null)
-                      : StatusChip(status == 'pending_owner' ? 'بانتظار المالك' : 'رفضه المالك', status == 'pending_owner' ? Colors.purple : Colors.red),
+                      : StatusChip(status == 'pending_owner' ? 'بانتظار المالك' : 'رفضه المالك', status == 'pending_owner' ? AppColors.info : AppColors.bad),
                 ),
               );
             }),

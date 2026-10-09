@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/theme.dart';
 import 'cc_widgets.dart';
 
 /// System health: database, WhatsApp gateway, GPS tracking stream, storage, audit-log integrity.
@@ -59,7 +60,7 @@ class _HealthTabState extends State<HealthTab> {
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(Gap.lg),
         children: [
           Wrap(
             spacing: 12,
@@ -80,7 +81,7 @@ class _HealthTabState extends State<HealthTab> {
                   h['geofence_enforced'] == true ? 'مفعّلة' : 'معطّلة (وضع الاختبار)', 'التحقق بخطوتين: ${(h['two_factor_roles'] as List).join('، ')}'),
               Container(
                 width: 300,
-                padding: const EdgeInsets.all(14),
+                padding: const EdgeInsets.all(Gap.md),
                 decoration: BoxDecoration(color: CC.panel, borderRadius: BorderRadius.circular(12), border: Border.all(color: CC.border)),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -117,7 +118,7 @@ class _HealthTabState extends State<HealthTab> {
   Widget _card(String title, IconData icon, Color color, String status, String detail) {
     return Container(
       width: 300,
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(Gap.md),
       decoration: BoxDecoration(color: CC.panel, borderRadius: BorderRadius.circular(12), border: Border.all(color: color.withValues(alpha: 0.4))),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/session.dart';
+import '../../core/theme.dart';
 import '../collector/widgets/sos_button.dart';
 import '../hr/hr_tabs.dart';
 import '../performance/performance_tabs.dart';
@@ -22,10 +23,10 @@ class SupervisorScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return PermittedTabs(
-      appBar: (bar) => AppBar(
-        title: Text('بوابة المشرف - ${Session.instance.fullName}', style: const TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.orange.shade800,
-        foregroundColor: Colors.white,
+      appBar: (bar) => portalAppBar(
+        title: 'بوابة المشرف',
+        subtitle: Session.instance.fullName,
+        color: AppColors.supervisor,
         actions: const [SosButton(), InboxButton(), SelfServiceButton(), LogoutButton()],
         bottom: bar,
       ),

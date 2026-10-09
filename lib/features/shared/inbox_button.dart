@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/theme.dart';
 
 /// Envelope icon with an unread badge. Checks for Command messages every 60 s;
 /// a new URGENT message pops up immediately.
@@ -67,7 +68,7 @@ class _InboxButtonState extends State<InboxButton> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        icon: const Icon(Icons.campaign, color: Colors.red, size: 40),
+        icon: const Icon(Icons.campaign, color: AppColors.bad, size: 40),
         title: const Text('توجيه عاجل من القيادة'),
         content: Text('${m['body']}', style: const TextStyle(fontSize: 18)),
         actions: [
@@ -96,7 +97,7 @@ class _InboxButtonState extends State<InboxButton> {
               const ListTile(title: Text('رسائل القيادة', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18))),
               const Divider(height: 1),
               if (_messages.isEmpty)
-                const Padding(padding: EdgeInsets.all(32), child: Text('لا توجد رسائل'))
+                const EmptyState(icon: Icons.mark_email_read_outlined, title: 'لا توجد رسائل', message: 'رسائل القيادة وتوجيهاتها تظهر هنا')
               else
                 Flexible(
                   child: ListView.separated(
@@ -110,7 +111,7 @@ class _InboxButtonState extends State<InboxButton> {
                       return ListTile(
                         leading: Icon(
                           urgent ? Icons.campaign : Icons.mail,
-                          color: urgent ? Colors.red : (m['is_read'] == true ? Colors.grey : Colors.blue),
+                          color: urgent ? AppColors.bad : (m['is_read'] == true ? AppColors.muted : AppColors.info),
                         ),
                         title: Text('${m['body']}',
                             style: TextStyle(fontWeight: m['is_read'] == true ? FontWeight.normal : FontWeight.bold)),

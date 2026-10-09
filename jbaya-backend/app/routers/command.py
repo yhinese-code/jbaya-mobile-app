@@ -7,7 +7,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from .. import audit, codes, files
+from .. import audit, codes, files, ledger
 from ..config import settings
 from ..utils import haversine_m, mask_phone
 from ..db import dict_cursor, get_conn
@@ -83,19 +83,24 @@ def overview(user: dict = Depends(command_or_admin)):
                  (SELECT COUNT(*) FROM sos_alerts WHERE status = 'open') AS open_sos,
                  (SELECT COUNT(DISTINCT employee_id) FROM location_pings
                      WHERE received_at >= NOW() - (%(online)s || ' seconds')::interval
-                       AND employee_id IN (SELECT id FROM employees WHERE role = 'collector' AND active)) AS online_staff,
-                 (SELECT COUNT(*) FROM employees WHERE role = 'collector' AND active) AS total_collectors,
+                       AND employee_id IN (SELECT id FROM employees WHERE role IN ('collector','supervisor') AND active)) AS online_staff,
+                 (SELECT COUNT(*) FROM employees WHERE role IN ('collector','supervisor') AND active) AS total_collectors,
                  (SELECT COALESCE(SUM(COALESCE(daily_target_iqd, %(target)s)), 0) FROM employees
-                     WHERE role = 'collector' AND active) AS target_today,
+                     WHERE role IN ('collector','supervisor') AND active) AS target_today,
                  (SELECT COUNT(*) FROM reconciliations WHERE resolution_status = 'escalated') AS escalations,
                  (SELECT COALESCE(SUM(amount),0) FROM bank_deposits WHERE status = 'pending') AS deposits_pending_verification,
                  (SELECT COUNT(*) FROM audit_log WHERE action IN ('otp_failed','master_code_failed','geofence_violation','employee_phone_blocked','cash_cap_blocked',
-                                                  'geofence_exit','mock_location','impossible_speed','login_2fa_failed')
+                                                  'geofence_exit','mock_location','impossible_speed','login_2fa_failed',
+                                                  'fast_otp','phone_limit_blocked','device_shared_attempt')
                      AND created_at >= date_trunc('day', NOW())) AS security_events_today""",
             {"online": settings.PING_ONLINE_SECONDS, "target": settings.COLLECTOR_DAILY_TARGET_IQD},
         )
         r = cur.fetchone()
-    return {k: (float(v) if k in ("collected_today", "cash_in_transit", "deposits_pending_verification", "target_today") else v) for k, v in r.items()}
+        cash = ledger.cash_position(ledger.balances(cur))
+    out = {k: (float(v) if k in ("collected_today", "cash_in_transit", "deposits_pending_verification", "target_today") else v)
+           for k, v in r.items()}
+    out["cash_outside_hq"] = cash["outside_hq"]      # with collectors + supervisors, not yet counted by finance
+    return out
 
 
 @router.get("/receipts")

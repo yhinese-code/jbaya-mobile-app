@@ -55,9 +55,10 @@ class ApiClient {
   Future<dynamic> _send(Future<http.Response> Function() call) async {
     http.Response res;
     try {
-      res = await call().timeout(const Duration(seconds: 25));
+      res = await call().timeout(const Duration(seconds: 40));
     } on TimeoutException {
-      throw ApiException(0, 'انتهت مهلة الاتصال بالخادم، حاول مجدداً');
+      // -1, not 0: the request may have reached the server, so it must not be saved again as offline work
+      throw ApiException(-1, 'انتهت مهلة الاتصال بالخادم. تحقق من القائمة قبل الإعادة حتى لا يتكرر العمل');
     } catch (_) {
       throw ApiException(0, 'تعذر الاتصال بالخادم. تحقق من الإنترنت أو من تشغيل الخادم');
     }

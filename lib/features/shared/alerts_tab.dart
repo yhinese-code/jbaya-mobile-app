@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/theme.dart';
 
 /// SOS alerts. Supervisors see their team; Command sees everyone. Auto-refreshes every 20 seconds.
 class AlertsTab extends StatefulWidget {
@@ -52,22 +53,40 @@ class _AlertsTabState extends State<AlertsTab> {
       await ApiClient.instance.post('/alerts/${a['id']}', {'action': action});
       if (mounted) _load();
     } on ApiException catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message), backgroundColor: Colors.red));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message), backgroundColor: AppColors.bad));
     }
   }
 
   @override
   Widget build(BuildContext context) {
     if (_loading) return const Center(child: CircularProgressIndicator());
-    if (_error != null) return Center(child: Text(_error!, style: const TextStyle(color: Colors.red)));
+    // also shown inside Command's dark theme: text colours come from the theme here, not from AppColors.ink
+    if (_error != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(Gap.xl),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const Icon(Icons.cloud_off, size: 44, color: AppColors.faint),
+            const SizedBox(height: Gap.md),
+            const Text('تعذر تحميل الاستغاثات', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+            const SizedBox(height: Gap.xs),
+            Text(_error!, textAlign: TextAlign.center, style: const TextStyle(color: AppColors.bad)),
+            const SizedBox(height: Gap.lg),
+            OutlinedButton.icon(onPressed: _load, icon: const Icon(Icons.refresh), label: const Text('إعادة المحاولة')),
+          ]),
+        ),
+      );
+    }
     if (_items.isEmpty) {
       return const Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.verified_user, color: Colors.green, size: 48),
-            SizedBox(height: 8),
-            Text('لا توجد نداءات استغاثة مفتوحة'),
+            Icon(Icons.verified_user, color: AppColors.good, size: 44),
+            SizedBox(height: Gap.md),
+            Text('لا توجد نداءات استغاثة مفتوحة', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+            SizedBox(height: Gap.xs),
+            Text('أي نداء من الميدان يظهر هنا فوراً', style: TextStyle(color: AppColors.muted)),
           ],
         ),
       );
@@ -75,7 +94,7 @@ class _AlertsTabState extends State<AlertsTab> {
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView.builder(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(Gap.md),
         itemCount: _items.length,
         itemBuilder: (context, i) {
           final a = _items[i];
@@ -83,20 +102,15 @@ class _AlertsTabState extends State<AlertsTab> {
           final t = DateTime.tryParse((a['created_at'] ?? '').toString())?.toLocal();
           final time = t == null ? '' : '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
           final hasGps = a['lat'] != null && a['lng'] != null;
-          return Card(
-            color: open ? Colors.red.shade50 : null,
-            shape: RoundedRectangleBorder(
-              side: BorderSide(color: open ? Colors.red : Colors.grey.shade300, width: open ? 2 : 1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
+          return AppCard(
+            accent: open ? AppColors.bad : null,
+            padding: const EdgeInsets.all(Gap.md),
+            child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
                     children: [
-                      Icon(Icons.sos, color: open ? Colors.red : Colors.grey),
+                      Icon(Icons.sos, color: open ? AppColors.bad : AppColors.muted),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text('${a['employee_code']} - ${a['full_name']}',
@@ -114,26 +128,27 @@ class _AlertsTabState extends State<AlertsTab> {
                     style: const TextStyle(fontSize: 12),
                   ),
                   if (!open)
-                    Text('تم الاستلام بواسطة ${a['acknowledged_by'] ?? '-'}', style: const TextStyle(fontSize: 12, color: Colors.green)),
+                    Text('تم الاستلام بواسطة ${a['acknowledged_by'] ?? '-'}', style: const TextStyle(fontSize: 12, color: AppColors.good)),
                   const SizedBox(height: 8),
                   Wrap(
-                    spacing: 8,
+                    spacing: Gap.sm,
+                    runSpacing: Gap.sm,
+                    crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
                       if (open)
                         ElevatedButton(
                           onPressed: () => _act(a, 'acknowledge'),
-                          style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+                          style: ElevatedButton.styleFrom(backgroundColor: AppColors.bad, foregroundColor: Colors.white),
                           child: const Text('استلام والتحرك'),
                         ),
                       OutlinedButton(onPressed: () => _act(a, 'close'), child: const Text('إغلاق (تمت المعالجة)')),
                       if (hasGps)
                         SelectableText('https://maps.google.com/?q=${a['lat']},${a['lng']}',
-                            style: const TextStyle(fontSize: 12, color: Colors.blue)),
+                            style: const TextStyle(fontSize: 12, color: AppColors.info)),
                     ],
                   ),
                 ],
               ),
-            ),
           );
         },
       ),

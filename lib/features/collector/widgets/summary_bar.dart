@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/api_client.dart';
 import '../../../core/format.dart';
+import '../../../core/theme.dart';
 
 /// Today's figures for the collector: what he collected, cash in hand vs the cap (no targets).
 class SummaryBar extends StatefulWidget {
@@ -37,82 +38,91 @@ class SummaryBarState extends State<SummaryBar> {
     final cash = (asNum(s['cash_in_hand']) ?? 0).toDouble();
     final cap = (asNum(s['cash_cap']) ?? 1).toDouble();
     final cashRatio = cap <= 0 ? 0.0 : (cash / cap).clamp(0.0, 1.0);
-    final cashColor = cashRatio >= 1 ? Colors.red : (cashRatio >= 0.8 ? Colors.orange : Colors.teal);
+    final cashColor = cashRatio >= 1 ? AppColors.bad : (cashRatio >= 0.8 ? AppColors.warn : AppColors.brand);
+    final masterUses = (asNum(s['master_code_uses_today']) ?? 0) > 0;
 
     return Container(
       color: Colors.white,
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+      padding: const EdgeInsets.fromLTRB(Gap.lg, Gap.md, Gap.lg, Gap.sm),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // No daily target here: the collector never sees performance targets as numbers.
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('المحصّل اليوم', style: TextStyle(fontSize: 12, color: Colors.grey)),
-                    Text(formatIqd(collected), style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green, fontSize: 13)),
+                    const Text('المحصّل اليوم', style: TextStyle(fontSize: 12, color: AppColors.muted)),
+                    Text(formatIqd(collected),
+                        style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.good, fontSize: 17)),
                   ],
                 ),
               ),
-              const SizedBox(width: 16),
-              Expanded(child: _meter('النقد بحوزتك', '${formatIqd(cash)} / ${formatIqd(cap)}', cashRatio, cashColor)),
+              const SizedBox(width: Gap.lg),
+              Expanded(child: _meter('النقد بحوزتك', formatIqd(cash), 'من ${formatIqd(cap)}', cashRatio, cashColor)),
             ],
           ),
-          const SizedBox(height: 6),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
+          const SizedBox(height: Gap.sm),
+          Wrap(
+            spacing: Gap.lg,
+            runSpacing: Gap.xs,
             children: [
-              Text('وصولات اليوم: ${s['receipts_today']}', style: const TextStyle(fontSize: 12)),
-              Text('تسجيلات اليوم: ${s['registrations_today']}', style: const TextStyle(fontSize: 12)),
-              if ((asNum(s['master_code_uses_today']) ?? 0) > 0)
-                Text('الرمز الرئيسي: ${s['master_code_uses_today']}', style: const TextStyle(fontSize: 12, color: Colors.orange)),
+              _fact(Icons.receipt_long_outlined, 'وصولات اليوم', '${s['receipts_today']}'),
+              _fact(Icons.person_add_alt_1_outlined, 'تسجيلات اليوم', '${s['registrations_today']}'),
+              if (masterUses) _fact(Icons.key_outlined, 'الرمز الرئيسي', '${s['master_code_uses_today']}', color: AppColors.warn),
             ],
           ),
           if (s['cash_cap_reached'] == true)
-            Container(
-              margin: const EdgeInsets.only(top: 8),
-              padding: const EdgeInsets.all(8),
-              width: double.infinity,
-              color: Colors.red.shade50,
-              child: const Text(
-                'وصلت الحد الأعلى للنقد. سلّم المبالغ للمشرف لتتمكن من متابعة الجباية.',
-                style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
-              ),
+            const NoticeBanner(
+              tone: Tone.bad,
+              icon: Icons.account_balance_wallet_outlined,
+              title: 'وصلت الحد الأعلى للنقد',
+              message: 'سلّم المبالغ للمشرف لتتمكن من متابعة الجباية.',
             )
           else if (cashRatio >= 0.8)
             Padding(
-              padding: const EdgeInsets.only(top: 6),
+              padding: const EdgeInsets.only(top: Gap.xs),
               child: Text('اقتربت من الحد الأعلى للنقد، رتّب التسليم مع المشرف',
-                  style: TextStyle(color: Colors.orange.shade800, fontSize: 12)),
+                  style: const TextStyle(color: AppColors.warn, fontSize: 12, fontWeight: FontWeight.w600)),
             ),
           if (s['open_sos'] != null)
-            Container(
-              margin: const EdgeInsets.only(top: 8),
-              padding: const EdgeInsets.all(8),
-              width: double.infinity,
-              color: Colors.red.shade100,
-              child: Text(
-                s['open_sos']['status'] == 'acknowledged'
-                    ? 'تم استلام نداء الاستغاثة. الدعم في الطريق'
-                    : 'تم إرسال نداء الاستغاثة. بانتظار الاستجابة',
-                style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
-              ),
+            NoticeBanner(
+              tone: Tone.bad,
+              icon: Icons.sos,
+              title: s['open_sos']['status'] == 'acknowledged'
+                  ? 'تم استلام نداء الاستغاثة. الدعم في الطريق'
+                  : 'تم إرسال نداء الاستغاثة. بانتظار الاستجابة',
             ),
         ],
       ),
     );
   }
 
-  Widget _meter(String label, String value, double ratio, Color color) {
+  Widget _fact(IconData icon, String label, String value, {Color color = AppColors.muted}) {
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      Icon(icon, size: 16, color: color),
+      const SizedBox(width: Gap.xs),
+      Text('$label: ', style: TextStyle(fontSize: 12, color: color)),
+      Text(value, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.ink)),
+    ]);
+  }
+
+  Widget _meter(String label, String value, String of, double ratio, Color color) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-        Text(value, style: TextStyle(fontWeight: FontWeight.bold, color: color, fontSize: 13)),
-        const SizedBox(height: 4),
-        LinearProgressIndicator(value: ratio, color: color, backgroundColor: color.withValues(alpha: 0.15), minHeight: 6),
+        Text(label, style: const TextStyle(fontSize: 12, color: AppColors.muted)),
+        Text(value, style: TextStyle(fontWeight: FontWeight.w700, color: color, fontSize: 17)),
+        const SizedBox(height: Gap.xs),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(4),
+          child: LinearProgressIndicator(value: ratio, color: color, backgroundColor: color.withValues(alpha: 0.15), minHeight: 6),
+        ),
+        const SizedBox(height: 2),
+        Text(of, style: const TextStyle(fontSize: 11, color: AppColors.muted)),
       ],
     );
   }

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../core/format.dart';
 import '../../core/session.dart';
+import '../../core/theme.dart';
 import '../self_service/self_service_screen.dart' show showPayslip;
 import '../shared/photo_dialog.dart';
 import '../shared/ui.dart';
@@ -39,7 +40,7 @@ class _AttendanceDayTabState extends State<AttendanceDayTab> {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(Gap.md),
           child: Row(children: [
             OutlinedButton.icon(
               icon: const Icon(Icons.event),
@@ -63,18 +64,18 @@ class _AttendanceDayTabState extends State<AttendanceDayTab> {
               return RefreshIndicator(
                 onRefresh: reload,
                 child: ListView(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  padding: const EdgeInsets.symmetric(horizontal: Gap.md),
                   children: [
                     Wrap(spacing: 8, children: counts.entries.map((e) => StatusChip('${_labels[e.key] ?? e.key}: ${e.value}',
-                        statusColor(e.key == 'late' ? 'pending' : e.key))).toList()),
+                        statusTone(e.key == 'late' ? 'pending' : e.key))).toList()),
                     const SizedBox(height: 8),
                     ...rows.map((r) {
                       final flags = (r['flags'] as List? ?? []).cast<dynamic>();
                       return Card(
                         child: ListTile(
                           leading: CircleAvatar(
-                            backgroundColor: statusColor(r['status'] == 'late' ? 'pending' : r['status'] as String?).withValues(alpha: 0.15),
-                            child: Icon(Icons.person, color: statusColor(r['status'] == 'late' ? 'pending' : r['status'] as String?)),
+                            backgroundColor: statusTone(r['status'] == 'late' ? 'pending' : r['status'] as String?).withValues(alpha: 0.15),
+                            child: Icon(Icons.person, color: statusTone(r['status'] == 'late' ? 'pending' : r['status'] as String?)),
                           ),
                           title: Text('${r['employee_code']} - ${r['full_name']}'),
                           subtitle: Text('${roleLabels[r['role']] ?? r['role']} | ${r['sector_name'] ?? ''}'
@@ -89,7 +90,7 @@ class _AttendanceDayTabState extends State<AttendanceDayTab> {
                                 icon: const Icon(Icons.face),
                                 onPressed: () => showEvidencePhoto(context, '/hr/attendance/${r['attendance_id']}/selfie', title: 'سيلفي الحضور'),
                               ),
-                            StatusChip(_labels[r['status']] ?? '${r['status']}', statusColor(r['status'] == 'late' ? 'pending' : r['status'] as String?)),
+                            StatusChip(_labels[r['status']] ?? '${r['status']}', statusTone(r['status'] == 'late' ? 'pending' : r['status'] as String?)),
                           ]),
                         ),
                       );
@@ -133,19 +134,12 @@ class _LeaveApprovalsTabState extends State<LeaveApprovalsTab> {
     final isSupervisor = Session.instance.role == 'supervisor';
     return Column(children: [
       if (widget.readOnly)
-        Container(
-          width: double.infinity,
-          margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(color: Colors.blue.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(8)),
-          child: const Row(children: [
-            Icon(Icons.info_outline, color: Colors.blue),
-            SizedBox(width: 8),
-            Expanded(child: Text('الموافقة من صلاحية الموارد البشرية فقط')),
-          ]),
+        const Padding(
+          padding: EdgeInsets.fromLTRB(Gap.md, Gap.md, Gap.md, 0),
+          child: NoticeBanner(icon: Icons.info_outline, title: 'الموافقة من صلاحية الموارد البشرية فقط'),
         ),
       Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(Gap.md),
         child: SegmentedButton<bool>(
           segments: const [ButtonSegment(value: true, label: Text('بانتظار القرار')), ButtonSegment(value: false, label: Text('الكل'))],
           selected: {_pendingOnly},
@@ -158,25 +152,24 @@ class _LeaveApprovalsTabState extends State<LeaveApprovalsTab> {
           path: '/hr/leave?status=${_pendingOnly ? 'pending' : 'all'}',
           builder: (context, data, reload) {
             final list = (data as List).cast<Map>();
-            if (list.isEmpty) return const Center(child: Text('لا توجد طلبات'));
+            if (list.isEmpty) return const EmptyState(icon: Icons.task_alt, title: 'لا توجد طلبات إجازة', message: 'الطلبات الجديدة بانتظار القرار ستظهر هنا');
             return RefreshIndicator(
               onRefresh: reload,
               child: ListView(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
+                padding: const EdgeInsets.symmetric(horizontal: Gap.md),
                 children: list.map((r) {
                   final canAct = !widget.readOnly &&
                       (isSupervisor ? r['status'] == 'pending_supervisor' : '${r['status']}'.startsWith('pending'));
-                  return Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  return AppCard(
+                    padding: const EdgeInsets.all(Gap.md),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         Row(children: [
                           Expanded(child: Text('${r['employee_code']} - ${r['full_name']}', style: const TextStyle(fontWeight: FontWeight.bold))),
-                          StatusChip(leaveStatusLabels[r['status']] ?? '${r['status']}', statusColor(r['status'] as String?)),
+                          StatusChip(leaveStatusLabels[r['status']] ?? '${r['status']}', statusTone(r['status'] as String?)),
                         ]),
                         Text('${r['label']} | ${r['days']} يوم | ${r['start_date']} ← ${r['end_date']}'),
-                        if (r['reason'] != null) Text('السبب: ${r['reason']}', style: const TextStyle(color: Colors.grey)),
-                        if (r['decision_note'] != null) Text('ملاحظة: ${r['decision_note']}', style: const TextStyle(color: Colors.grey)),
+                        if (r['reason'] != null) Text('السبب: ${r['reason']}', style: const TextStyle(color: AppColors.muted)),
+                        if (r['decision_note'] != null) Text('ملاحظة: ${r['decision_note']}', style: const TextStyle(color: AppColors.muted)),
                         Wrap(spacing: 8, children: [
                           if (r['has_attachment'] == true)
                             TextButton.icon(
@@ -187,18 +180,17 @@ class _LeaveApprovalsTabState extends State<LeaveApprovalsTab> {
                           if (canAct) ...[
                             ElevatedButton(
                               onPressed: () => _decide(r, 'approve'),
-                              style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
+                              style: ElevatedButton.styleFrom(backgroundColor: AppColors.good, foregroundColor: Colors.white),
                               child: Text(isSupervisor ? 'موافقة (تحويل للموارد البشرية)' : 'اعتماد'),
                             ),
                             OutlinedButton(
                               onPressed: () => _decide(r, 'reject'),
-                              style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
+                              style: OutlinedButton.styleFrom(foregroundColor: AppColors.bad),
                               child: const Text('رفض'),
                             ),
                           ],
                         ]),
                       ]),
-                    ),
                   );
                 }).toList(),
               ),
@@ -234,7 +226,7 @@ class _ExpenseApprovalsTabState extends State<ExpenseApprovalsTab> {
   Widget build(BuildContext context) {
     return Column(children: [
       Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(Gap.md),
         child: SegmentedButton<String>(
           segments: const [
             ButtonSegment(value: 'pending', label: Text('بانتظار الموافقة')),
@@ -252,12 +244,12 @@ class _ExpenseApprovalsTabState extends State<ExpenseApprovalsTab> {
           path: '/hr/expenses?status=$_status',
           builder: (context, data, reload) {
             final list = (data as List).cast<Map>();
-            if (list.isEmpty) return const Center(child: Text('لا توجد مطالبات'));
+            if (list.isEmpty) return const EmptyState(icon: Icons.receipt_long_outlined, title: 'لا توجد مطالبات مصاريف بهذه الحالة');
             final total = list.fold<double>(0, (s, x) => s + ((asNum(x['amount']) ?? 0).toDouble()));
             return RefreshIndicator(
               onRefresh: reload,
               child: ListView(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
+                padding: const EdgeInsets.symmetric(horizontal: Gap.md),
                 children: [
                   Text('${list.length} مطالبة | ${formatIqd(total)}', style: const TextStyle(fontWeight: FontWeight.bold)),
                   ...list.map((x) => Card(
@@ -269,10 +261,10 @@ class _ExpenseApprovalsTabState extends State<ExpenseApprovalsTab> {
                               IconButton(icon: const Icon(Icons.receipt), tooltip: 'الوصل',
                                   onPressed: () => showEvidencePhoto(context, '/hr/expenses/${x['id']}/receipt', title: 'وصل المصروف')),
                             if (x['status'] == 'pending') ...[
-                              IconButton(icon: const Icon(Icons.check_circle, color: Colors.green), tooltip: 'موافقة', onPressed: () => _decide(x, 'approve')),
-                              IconButton(icon: const Icon(Icons.cancel, color: Colors.red), tooltip: 'رفض', onPressed: () => _decide(x, 'reject')),
+                              IconButton(icon: const Icon(Icons.check_circle, color: AppColors.good), tooltip: 'موافقة', onPressed: () => _decide(x, 'approve')),
+                              IconButton(icon: const Icon(Icons.cancel, color: AppColors.bad), tooltip: 'رفض', onPressed: () => _decide(x, 'reject')),
                             ] else
-                              StatusChip(expenseStatusLabels[x['status']] ?? '${x['status']}', statusColor(x['status'] as String?)),
+                              StatusChip(expenseStatusLabels[x['status']] ?? '${x['status']}', statusTone(x['status'] as String?)),
                           ]),
                         ),
                       )),
@@ -364,16 +356,16 @@ class _PayrollTabState extends State<PayrollTab> {
                     ElevatedButton(onPressed: _compute, child: const Text('احتساب')),
                   ]),
                 const SizedBox(height: 8),
-                if (list.isEmpty) const Text('لا توجد رواتب محتسبة', style: TextStyle(color: Colors.grey)),
+                if (list.isEmpty) const EmptyState(title: 'لا توجد رواتب محتسبة'),
                 ...list.map((r) {
                   final t = (r['totals'] as Map?) ?? {};
                   final label = r['status'] == 'draft' ? 'مسودة' : (r['status'] == 'approved' ? 'معتمدة' : 'مصروفة');
                   return Card(
-                    color: r['period'] == _period ? Colors.purple.shade50 : null,
+                    color: r['period'] == _period ? AppColors.hr.withValues(alpha: 0.08) : null,
                     child: ListTile(
                       title: Text('${r['period']}'),
                       subtitle: Text('${t['employees'] ?? 0} موظف | الصافي ${formatIqd(asNum(t['net']))}'),
-                      trailing: StatusChip(label, statusColor(r['status'] == 'draft' ? 'pending' : (r['status'] == 'paid' ? 'paid' : 'approved'))),
+                      trailing: StatusChip(label, statusTone(r['status'] == 'draft' ? 'pending' : (r['status'] == 'paid' ? 'paid' : 'approved'))),
                       onTap: () => setState(() => _period = r['period'] as String),
                     ),
                   );
@@ -391,12 +383,12 @@ class _PayrollTabState extends State<PayrollTab> {
           final t = (data['totals'] as Map?) ?? {};
           final status = data['status'];
           return ListView(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(Gap.md),
             children: [
               Wrap(spacing: 10, runSpacing: 10, crossAxisAlignment: WrapCrossAlignment.center, children: [
                 Text('رواتب $_period', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                 StatusChip(status == 'draft' ? 'مسودة' : (status == 'approved' ? 'معتمدة' : 'مصروفة'),
-                    statusColor(status == 'draft' ? 'pending' : 'approved')),
+                    statusTone(status == 'draft' ? 'pending' : 'approved')),
                 Chip(label: Text('الإجمالي ${formatIqd(asNum(t['gross']))}')),
                 Chip(label: Text('الاستقطاعات ${formatIqd(asNum(t['deductions']))}')),
                 Chip(label: Text('الصافي ${formatIqd(asNum(t['net']))}')),
@@ -408,11 +400,14 @@ class _PayrollTabState extends State<PayrollTab> {
                   ElevatedButton(onPressed: () => _action('mark_paid'), child: const Text('تسجيل الصرف')),
               ]),
               if (_isHr && status == 'draft')
-                const Padding(padding: EdgeInsets.only(top: 6), child: Text('المسودة تُعتمد من قسم المالية.', style: TextStyle(color: Colors.grey))),
+                const Padding(padding: EdgeInsets.only(top: 6), child: Text('المسودة تُعتمد من قسم المالية.', style: TextStyle(color: AppColors.muted))),
               const SizedBox(height: 8),
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: DataTable(
+                  headingRowColor: WidgetStateProperty.all(AppColors.paper),
+                  headingTextStyle: const TextStyle(fontFamily: AppTheme.fontFamily, fontWeight: FontWeight.w600, color: AppColors.muted, fontSize: 13),
+                  dataTextStyle: const TextStyle(fontFamily: AppTheme.fontFamily, color: AppColors.ink, fontSize: 13, fontFeatures: [FontFeature.tabularFigures()]),
                   columns: const [
                     DataColumn(label: Text('الموظف')),
                     DataColumn(label: Text('حضور/غياب')),
@@ -427,7 +422,7 @@ class _PayrollTabState extends State<PayrollTab> {
                       DataCell(Text('${p['employee_code']} - ${p['full_name']}')),
                       DataCell(Text('${s['present_days']} / ${s['absent_days']}')),
                       DataCell(Text(formatIqd(asNum(p['gross'])))),
-                      DataCell(Text(formatIqd(asNum(p['deductions'])), style: const TextStyle(color: Colors.red))),
+                      DataCell(Text(formatIqd(asNum(p['deductions'])), style: const TextStyle(color: AppColors.bad))),
                       DataCell(Text(formatIqd(asNum(p['net'])), style: const TextStyle(fontWeight: FontWeight.bold))),
                       DataCell(IconButton(icon: const Icon(Icons.visibility), onPressed: () => showPayslip(context, '', preloaded: {...p, 'period': _period}))),
                     ]);
@@ -471,7 +466,7 @@ class _AppraisalsTabState extends State<AppraisalsTab> {
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: List.generate(5, (i) => IconButton(
-                    icon: Icon(i < rating ? Icons.star : Icons.star_border, color: Colors.amber, size: 32),
+                    icon: Icon(i < rating ? Icons.star : Icons.star_border, color: AppColors.warn, size: 32),
                     onPressed: () => setD(() => rating = i + 1),
                   )),
             ),
@@ -496,7 +491,7 @@ class _AppraisalsTabState extends State<AppraisalsTab> {
     final isHr = const ['hr', 'admin'].contains(Session.instance.role);
     return Column(children: [
       Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(Gap.md),
         child: Row(children: [
           SizedBox(
             width: 180,
@@ -525,15 +520,21 @@ class _AppraisalsTabState extends State<AppraisalsTab> {
           path: '/hr/appraisals?period=$_period',
           builder: (context, data, reload) {
             final list = (data as List).cast<Map>();
-            if (list.isEmpty) return Center(child: Text(isHr ? 'اضغط "احتساب التقييم التلقائي"' : 'لم تحتسب الموارد البشرية تقييم هذا الشهر بعد'));
+            if (list.isEmpty) {
+              return EmptyState(
+                icon: Icons.star_outline,
+                title: 'لا توجد تقييمات لهذا الشهر',
+                message: isHr ? 'اضغط "احتساب التقييم التلقائي" لإنشائها' : 'لم تحتسب الموارد البشرية تقييم هذا الشهر بعد',
+              );
+            }
             return RefreshIndicator(
               onRefresh: reload,
               child: ListView(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
+                padding: const EdgeInsets.symmetric(horizontal: Gap.md),
                 children: list.map((a) {
                   final m = (a['metrics'] as Map?) ?? {};
                   final score = (asNum(a['final_score']) ?? 0).toDouble();
-                  final color = score >= 85 ? Colors.green : (score >= 70 ? Colors.teal : (score >= 50 ? Colors.orange : Colors.red));
+                  final color = score >= 85 ? AppColors.good : (score >= 70 ? AppColors.brand : (score >= 50 ? AppColors.warn : AppColors.bad));
                   String pct(dynamic v) => '${(((asNum(v) ?? 0) * 100)).round()}%';
                   return Card(
                     child: ListTile(
@@ -546,7 +547,7 @@ class _AppraisalsTabState extends State<AppraisalsTab> {
                         'تقييم المشرف ${a['supervisor_rating'] ?? '-'}/5 | التلقائي ${(asNum(a['auto_score']) ?? 0).round()}',
                       ),
                       isThreeLine: true,
-                      trailing: IconButton(icon: const Icon(Icons.star_rate, color: Colors.amber), tooltip: 'تقييم المشرف', onPressed: () => _rate(a)),
+                      trailing: IconButton(icon: const Icon(Icons.star_rate, color: AppColors.warn), tooltip: 'تقييم المشرف', onPressed: () => _rate(a)),
                     ),
                   );
                 }).toList(),

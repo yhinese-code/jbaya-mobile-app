@@ -3,6 +3,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../core/format.dart';
+import '../../core/theme.dart';
 
 /// Shared look for the Central Command (dark "video wall").
 class CC {
@@ -22,7 +23,7 @@ class CC {
     final base = ThemeData(
       useMaterial3: true,
       brightness: Brightness.dark,
-      fontFamily: 'Tahoma',
+      fontFamily: AppTheme.fontFamily,   // same bundled IBM Plex Sans Arabic as the rest of the app
       colorScheme: ColorScheme.fromSeed(seedColor: accent, brightness: Brightness.dark, surface: panel),
     );
     return base.copyWith(
@@ -80,21 +81,21 @@ class CCPanel extends StatelessWidget {
   final Widget child;
   final List<Widget> actions;
   final EdgeInsets padding;
-  const CCPanel({super.key, required this.title, required this.child, this.actions = const [], this.padding = const EdgeInsets.all(12)});
+  const CCPanel({super.key, required this.title, required this.child, this.actions = const [], this.padding = const EdgeInsets.all(Gap.md)});
 
   @override
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
         color: CC.panel,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(Gap.radius),
         border: Border.all(color: CC.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(14, 10, 14, 6),
+            padding: const EdgeInsets.fromLTRB(Gap.md, Gap.sm, Gap.md, Gap.sm),
             child: Row(
               children: [
                 Expanded(child: Text(title, style: const TextStyle(color: CC.text, fontWeight: FontWeight.bold, fontSize: 15))),
@@ -123,10 +124,10 @@ class KpiTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: 190,
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(Gap.md),
       decoration: BoxDecoration(
         color: CC.panel,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(Gap.radius),
         border: Border.all(color: color.withValues(alpha: 0.35)),
       ),
       child: Column(
@@ -136,15 +137,16 @@ class KpiTile extends StatelessWidget {
           Row(
             children: [
               Icon(icon, color: color, size: 18),
-              const SizedBox(width: 6),
+              const SizedBox(width: Gap.sm),
               Expanded(child: Text(label, style: const TextStyle(color: CC.muted, fontSize: 12), overflow: TextOverflow.ellipsis)),
             ],
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: Gap.sm),
           FittedBox(
             fit: BoxFit.scaleDown,
             alignment: AlignmentDirectional.centerStart,
-            child: Text(value, style: TextStyle(color: color, fontSize: 22, fontWeight: FontWeight.bold)),
+            child: Text(value,
+                style: TextStyle(color: color, fontSize: 22, fontWeight: FontWeight.bold, fontFeatures: const [FontFeature.tabularFigures()])),
           ),
           if (sub != null) Text(sub!, style: const TextStyle(color: CC.muted, fontSize: 11)),
           if (progress != null) ...[

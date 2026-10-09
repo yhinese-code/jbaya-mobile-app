@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/format.dart';
+import '../../core/theme.dart';
 import '../shared/ui.dart';
 import 'tech_common.dart';
 
@@ -113,14 +114,13 @@ class _TechSectorsTabState extends State<TechSectorsTab> {
     return RefreshIndicator(
       onRefresh: _reloadAll,
       child: ListView(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(Gap.md),
         children: [
           SectionTitle('القواطع', actions: [
-            FilledButton.icon(
+            ElevatedButton.icon(
               onPressed: _newSector,
               icon: const Icon(Icons.add_location_alt),
               label: const Text('قاطع جديد'),
-              style: FilledButton.styleFrom(backgroundColor: kTechColor),
             ),
           ]),
           ApiView(
@@ -234,25 +234,25 @@ class _SectorCard extends StatelessWidget {
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(Gap.md),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
             Expanded(child: Text(_name, style: const TextStyle(fontWeight: FontWeight.bold))),
-            Text(active ? 'فعّال' : 'موقوف', style: TextStyle(color: active ? Colors.green.shade700 : Colors.red.shade700)),
+            Text(active ? 'فعّال' : 'موقوف', style: TextStyle(color: active ? AppColors.good : AppColors.bad)),
             Switch(value: active, onChanged: (v) => _toggleActive(context, v)),
           ]),
           InfoLine(Icons.location_city, 'المحلة: ${txt(s['mahalla'])}  •  منازل فعّالة: ${toInt(s['houses'])}'),
           InfoLine(Icons.groups, 'الموظفون: ${toInt(s['staff'])}${s['staff_codes'] != null ? ' (${s['staff_codes']})' : ''}'),
           const SizedBox(height: 8),
-          const Text('المفاتيح في هذا القاطع:', style: TextStyle(color: Colors.grey, fontSize: 12)),
+          const Text('المفاتيح في هذا القاطع:', style: TextStyle(color: AppColors.muted, fontSize: 12)),
           const SizedBox(height: 4),
           Wrap(spacing: 6, runSpacing: 4, children: [
             for (final e in switchLabels.entries)
               FilterChip(
                 label: Text('${e.value}: ${sw[e.key] == false ? 'متوقفة هنا' : 'تتبع العام'}'),
                 selected: sw[e.key] != false,
-                selectedColor: Colors.green.withValues(alpha: 0.15),
-                backgroundColor: Colors.red.withValues(alpha: 0.08),
+                selectedColor: AppColors.good.withValues(alpha: 0.15),
+                backgroundColor: AppColors.bad.withValues(alpha: 0.08),
                 onSelected: (v) => _toggleSwitch(context, e.key, v),
               ),
           ]),

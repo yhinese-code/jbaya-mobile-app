@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/theme.dart';
 import '../shared/ui.dart';
 import 'tech_common.dart';
 
@@ -54,7 +55,7 @@ class _TechAccountsTabState extends State<TechAccountsTab> {
       ),
       body: Column(children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+          padding: const EdgeInsets.fromLTRB(Gap.md, Gap.md, Gap.md, Gap.xs),
           child: TextField(
             controller: _search,
             onChanged: (_) => setState(() {}),
@@ -100,7 +101,7 @@ class _TechAccountsTabState extends State<TechAccountsTab> {
                 child: ListView(
                   padding: const EdgeInsets.fromLTRB(12, 4, 12, 88),
                   children: [
-                    Text('${rows.length} من ${all.length} حساب', style: const TextStyle(color: Colors.grey)),
+                    Text('${rows.length} من ${all.length} حساب', style: const TextStyle(color: AppColors.muted)),
                     if (rows.isEmpty) const EmptyNote('لا توجد حسابات مطابقة'),
                     for (final e in rows) _EmployeeCard(employee: e, onChanged: reload),
                   ],
@@ -198,10 +199,10 @@ class _EmployeeCard extends StatelessWidget {
               const SizedBox(height: 4),
               Wrap(spacing: 6, runSpacing: 4, children: [
                 StatusChip(txt(e['role_label'] ?? e['role']), kTechColor),
-                active ? StatusChip('فعّال', Colors.green.shade700) : StatusChip('موقوف', Colors.red.shade700),
+                active ? StatusChip('فعّال', AppColors.good) : StatusChip('موقوف', AppColors.bad),
               ]),
               if (!active && e['suspended_reason'] != null)
-                InfoLine(Icons.info_outline, 'سبب الإيقاف: ${e['suspended_reason']}', color: Colors.red.shade700),
+                InfoLine(Icons.info_outline, 'سبب الإيقاف: ${e['suspended_reason']}', color: AppColors.bad),
               InfoLine(Icons.map, 'القاطع: $sector  •  المشرف: ${txt(e['supervisor_code'])}'),
               InfoLine(Icons.phone, 'الهاتف: ${txt(e['phone'])}'),
               InfoLine(
@@ -214,7 +215,7 @@ class _EmployeeCard extends StatelessWidget {
                   for (final p in perms.entries)
                     StatusChip(
                       '${switchLabels[p.key] ?? p.key}: ${p.value == true ? 'مسموح' : 'ممنوع'}',
-                      p.value == true ? Colors.teal : Colors.red.shade700,
+                      p.value == true ? AppColors.brand : AppColors.bad,
                     ),
                 ]),
               ],
@@ -227,10 +228,10 @@ class _EmployeeCard extends StatelessWidget {
               const PopupMenuItem(value: 'edit', child: ListTile(leading: Icon(Icons.edit), title: Text('تعديل'))),
               const PopupMenuItem(value: 'perms', child: ListTile(leading: Icon(Icons.toggle_on), title: Text('صلاحيات شخصية'))),
               if (active)
-                const PopupMenuItem(value: 'suspend', child: ListTile(leading: Icon(Icons.block, color: Colors.red), title: Text('إيقاف الحساب'))),
+                const PopupMenuItem(value: 'suspend', child: ListTile(leading: Icon(Icons.block, color: AppColors.bad), title: Text('إيقاف الحساب'))),
               if (!active)
                 const PopupMenuItem(
-                    value: 'reactivate', child: ListTile(leading: Icon(Icons.check_circle, color: Colors.green), title: Text('إعادة تفعيل'))),
+                    value: 'reactivate', child: ListTile(leading: Icon(Icons.check_circle, color: AppColors.good), title: Text('إعادة تفعيل'))),
               const PopupMenuItem(value: 'password', child: ListTile(leading: Icon(Icons.password), title: Text('تغيير كلمة المرور'))),
               const PopupMenuItem(value: 'logout', child: ListTile(leading: Icon(Icons.logout), title: Text('إنهاء كل الجلسات'))),
             ],
@@ -360,7 +361,7 @@ class _EmployeeFormDialogState extends State<_EmployeeFormDialog> {
             _field(_phone, 'الهاتف', keyboard: TextInputType.phone),
             _field(_sector, 'رمز القاطع', helper: _isNew ? null : 'اتركه فارغاً لإزالة القاطع'),
             _field(_supervisor, 'رقم المشرف', helper: _isNew ? null : 'اتركه فارغاً لإزالة المشرف'),
-            if (_error != null) Text(_error!, style: const TextStyle(color: Colors.red)),
+            if (_error != null) NoticeBanner(tone: Tone.bad, title: _error!),
           ]),
         ),
       ),
@@ -399,7 +400,7 @@ class _PermissionsDialogState extends State<_PermissionsDialog> {
         child: SingleChildScrollView(
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             const Text('«افتراضي» يتبع المفتاح العام وإعداد القاطع. «ممنوع» يوقف الميزة لهذا الشخص فقط.',
-                style: TextStyle(color: Colors.grey, fontSize: 13)),
+                style: TextStyle(color: AppColors.muted, fontSize: 13)),
             for (final e in switchLabels.entries) ...[
               const SizedBox(height: 12),
               Text(e.value, style: const TextStyle(fontWeight: FontWeight.bold)),

@@ -4,6 +4,7 @@ import '../../core/api_client.dart';
 import '../../core/format.dart';
 import '../../core/location_service.dart';
 import '../../core/photo_service.dart';
+import '../../core/theme.dart';
 import '../shared/ui.dart';
 
 /// "خدماتي": employee self-service (attendance with selfie, leave, payslips, expenses, my file).
@@ -15,24 +16,16 @@ class SelfServiceScreen extends StatelessWidget {
     return DefaultTabController(
       length: 5,
       child: Scaffold(
-        appBar: AppBar(
-          title: const Text('خدماتي'),
-          backgroundColor: const Color(0xFF37474F),
-          foregroundColor: Colors.white,
-          bottom: const TabBar(
-            isScrollable: true,
-            tabAlignment: TabAlignment.start,
-            labelColor: Colors.white,
-            unselectedLabelColor: Colors.white70,
-            indicatorColor: Colors.white,
-            tabs: [
-              Tab(icon: Icon(Icons.fingerprint), text: 'الحضور'),
-              Tab(icon: Icon(Icons.beach_access), text: 'الإجازات'),
-              Tab(icon: Icon(Icons.payments), text: 'رواتبي'),
-              Tab(icon: Icon(Icons.receipt), text: 'المصروفات'),
-              Tab(icon: Icon(Icons.badge), text: 'ملفي'),
-            ],
-          ),
+        appBar: portalAppBar(
+          title: 'خدماتي',
+          color: AppColors.selfService,
+          bottom: portalTabBar(const [
+            Tab(icon: Icon(Icons.fingerprint), text: 'الحضور'),
+            Tab(icon: Icon(Icons.beach_access), text: 'الإجازات'),
+            Tab(icon: Icon(Icons.payments), text: 'رواتبي'),
+            Tab(icon: Icon(Icons.receipt), text: 'المصروفات'),
+            Tab(icon: Icon(Icons.badge), text: 'ملفي'),
+          ]),
         ),
         body: const TabBarView(children: [_AttendanceTab(), _LeaveTab(), _PayslipsTab(), _ExpensesTab(), _MyFileTab()]),
       ),
@@ -81,7 +74,7 @@ class _AttendanceTabState extends State<_AttendanceTab> {
         final flags = (res['flags'] as List? ?? []);
         if (lateMin > 0 || flags.contains('outside_sector')) {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            backgroundColor: Colors.orange.shade800,
+            backgroundColor: AppColors.warn,
             content: Text('${lateMin > 0 ? 'تأخير $lateMin دقيقة. ' : ''}${flags.contains('outside_sector') ? 'سُجّل الحضور خارج القاطع.' : ''}'),
           ));
         }
@@ -105,19 +98,18 @@ class _AttendanceTabState extends State<_AttendanceTab> {
         return RefreshIndicator(
           onRefresh: reload,
           child: ListView(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(Gap.md),
             children: [
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
+              AppCard(
+                padding: const EdgeInsets.all(Gap.lg),
+                child: Column(
                     children: [
-                      Text('اليوم ${formatDate(today['date'])}', style: const TextStyle(fontSize: 16, color: Colors.grey)),
+                      Text('اليوم ${formatDate(today['date'])}', style: const TextStyle(fontSize: 16, color: AppColors.muted)),
                       const SizedBox(height: 8),
                       if (today['on_leave'] == true)
-                        const StatusChip('في إجازة معتمدة', Colors.blue)
+                        const StatusChip('في إجازة معتمدة', AppColors.info)
                       else if (today['working_day'] != true && !checkedIn)
-                        const StatusChip('يوم عطلة', Colors.grey),
+                        const StatusChip('يوم عطلة', AppColors.muted),
                       const SizedBox(height: 12),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -125,30 +117,29 @@ class _AttendanceTabState extends State<_AttendanceTab> {
                           _clock('الحضور', today['checked_in_at']),
                           _clock('الانصراف', today['checked_out_at']),
                           Column(children: [
-                            const Text('بداية الدوام', style: TextStyle(color: Colors.grey)),
+                            const Text('بداية الدوام', style: TextStyle(color: AppColors.muted)),
                             Text('${data['shift_start']}', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
                           ]),
                         ],
                       ),
                       const SizedBox(height: 20),
                       if (!checkedIn && today['on_leave'] != true)
-                        _bigButton('تسجيل الحضور (سيلفي + موقع)', Icons.login, Colors.green.shade700, () => _punch(true))
+                        _bigButton('تسجيل الحضور (سيلفي + موقع)', Icons.login, AppColors.good, () => _punch(true))
                       else if (checkedIn && !checkedOut)
-                        _bigButton('تسجيل الانصراف', Icons.logout, Colors.orange.shade800, () => _punch(false))
+                        _bigButton('تسجيل الانصراف', Icons.logout, AppColors.warn, () => _punch(false))
                       else if (checkedOut)
-                        const Text('✔ انتهى دوام اليوم', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+                        const Text('✔ انتهى دوام اليوم', style: TextStyle(color: AppColors.good, fontWeight: FontWeight.bold)),
                     ],
                   ),
-                ),
               ),
               const SectionTitle('سجل هذا الشهر'),
-              if (records.isEmpty) const Text('لا توجد سجلات', style: TextStyle(color: Colors.grey)),
+              if (records.isEmpty) const EmptyState(icon: Icons.fingerprint, title: 'لا توجد سجلات حضور هذا الشهر'),
               ...records.map((r) {
                 final isLate = (asNum(r['late_minutes']) ?? 0) > 0;
                 final worked = asNum(r['worked_minutes']);
                 return Card(
                   child: ListTile(
-                    leading: Icon(isLate ? Icons.schedule : Icons.check_circle, color: isLate ? Colors.orange : Colors.green),
+                    leading: Icon(isLate ? Icons.schedule : Icons.check_circle, color: isLate ? AppColors.warn : AppColors.good),
                     title: Text(formatDate(r['work_date'])),
                     subtitle: Text('حضور ${formatTime(r['check_in_at'])} | انصراف ${formatTime(r['check_out_at'])}'
                         '${worked != null ? ' | ${(worked / 60).toStringAsFixed(1)} ساعة' : ''}'
@@ -165,7 +156,7 @@ class _AttendanceTabState extends State<_AttendanceTab> {
 
   Widget _clock(String label, dynamic iso) {
     return Column(children: [
-      Text(label, style: const TextStyle(color: Colors.grey)),
+      Text(label, style: const TextStyle(color: AppColors.muted)),
       Text(iso == null ? '--:--' : formatTime(iso), style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
     ]);
   }
@@ -284,17 +275,21 @@ class _LeaveTabState extends State<_LeaveTab> {
         return RefreshIndicator(
           onRefresh: reload,
           child: ListView(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(Gap.md),
             children: [
               Wrap(
-                spacing: 10,
-                runSpacing: 10,
+                spacing: Gap.sm,
+                runSpacing: Gap.sm,
                 children: balances.values.map((b) {
                   final m = b as Map;
                   return Container(
                     width: 160,
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(color: Colors.blueGrey.shade50, borderRadius: BorderRadius.circular(10)),
+                    padding: const EdgeInsets.all(Gap.md),
+                    decoration: BoxDecoration(
+                      color: AppColors.card,
+                      borderRadius: BorderRadius.circular(Gap.radius),
+                      border: Border.all(color: AppColors.border),
+                    ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -302,20 +297,20 @@ class _LeaveTabState extends State<_LeaveTab> {
                         Text(m['remaining'] == null ? 'بدون حد' : 'المتبقي ${m['remaining']} من ${m['entitlement']}',
                             style: const TextStyle(fontSize: 12)),
                         Text('المستخدم ${m['used']}${(asNum(m['pending']) ?? 0) > 0 ? ' | قيد الطلب ${m['pending']}' : ''}',
-                            style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                            style: const TextStyle(fontSize: 12, color: AppColors.muted)),
                       ],
                     ),
                   );
                 }).toList(),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: Gap.md),
               ElevatedButton.icon(
                 onPressed: () => _request(balances),
                 icon: const Icon(Icons.add),
                 label: const Text('طلب إجازة جديد'),
               ),
               const SectionTitle('طلباتي'),
-              if (requests.isEmpty) const Text('لا توجد طلبات', style: TextStyle(color: Colors.grey)),
+              if (requests.isEmpty) const EmptyState(icon: Icons.beach_access_outlined, title: 'لم تقدّم طلبات إجازة بعد'),
               ...requests.map((r) => Card(
                     child: ListTile(
                       title: Text('${r['label']} | ${r['days']} يوم'),
@@ -325,14 +320,14 @@ class _LeaveTabState extends State<_LeaveTab> {
                         mainAxisAlignment: MainAxisAlignment.center,
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
-                          StatusChip(leaveStatusLabels[r['status']] ?? '${r['status']}', statusColor(r['status'] as String?)),
+                          StatusChip(leaveStatusLabels[r['status']] ?? '${r['status']}', statusTone(r['status'] as String?)),
                           if ('${r['status']}'.startsWith('pending'))
                             InkWell(
                               onTap: () async {
                                 await runApi(context, () => ApiClient.instance.post('/me/leave/${r['id']}/cancel'), success: 'تم الإلغاء');
                                 reload();
                               },
-                              child: const Padding(padding: EdgeInsets.only(top: 4), child: Text('إلغاء', style: TextStyle(color: Colors.red))),
+                              child: const Padding(padding: EdgeInsets.only(top: 4), child: Text('إلغاء', style: TextStyle(color: AppColors.bad))),
                             ),
                         ],
                       ),
@@ -357,16 +352,23 @@ class _PayslipsTab extends StatelessWidget {
       path: '/me/payslips',
       builder: (context, data, reload) {
         final list = (data as List).cast<Map>();
-        if (list.isEmpty) return const Center(child: Text('لا توجد قسائم رواتب معتمدة بعد'));
+        if (list.isEmpty) {
+          return const EmptyState(
+            icon: Icons.request_quote_outlined,
+            title: 'لا توجد قسائم رواتب معتمدة بعد',
+            message: 'تظهر القسيمة هنا بعد أن تعتمد المالية رواتب الشهر',
+          );
+        }
         return ListView(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(Gap.md),
           children: list
               .map((p) => Card(
                     child: ListTile(
-                      leading: const Icon(Icons.request_quote, color: Colors.teal),
+                      leading: const Icon(Icons.request_quote, color: AppColors.brand),
                       title: Text('راتب ${p['period']}'),
                       subtitle: Text('الإجمالي ${formatIqd(asNum(p['gross']))} | الاستقطاعات ${formatIqd(asNum(p['deductions']))}'),
-                      trailing: Text(formatIqd(asNum(p['net'])), style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.teal)),
+                      trailing: Text(formatIqd(asNum(p['net'])),
+                          style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.brand, fontFeatures: [FontFeature.tabularFigures()])),
                       onTap: () => showPayslip(context, '/me/payslips/${p['id']}'),
                     ),
                   ))
@@ -391,12 +393,15 @@ Future<void> showPayslip(BuildContext context, String path, {Map? preloaded}) {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text('${l['label']}'),
-                    if ('${l['detail'] ?? ''}'.isNotEmpty) Text('${l['detail']}', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                    if ('${l['detail'] ?? ''}'.isNotEmpty) Text('${l['detail']}', style: const TextStyle(fontSize: 11, color: AppColors.muted)),
                   ],
                 ),
               ),
               Text(formatIqd(asNum(l['amount'])),
-                  style: TextStyle(fontWeight: FontWeight.bold, color: l['kind'] == 'deduction' ? Colors.red.shade700 : null)),
+                  style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: l['kind'] == 'deduction' ? AppColors.bad : null,
+                      fontFeatures: const [FontFeature.tabularFigures()])),
             ],
           ),
         );
@@ -407,17 +412,17 @@ Future<void> showPayslip(BuildContext context, String path, {Map? preloaded}) {
           if (p['full_name'] != null) Text('${p['employee_code']} - ${p['full_name']}', style: const TextStyle(fontWeight: FontWeight.bold)),
           Text('أيام العمل ${stats['working_days_month'] ?? '-'} | حضور ${stats['present_days'] ?? '-'} | غياب ${stats['absent_days'] ?? '-'} | '
               'إجازة ${stats['paid_leave_days'] ?? 0} | تأخير ${stats['late_days'] ?? 0}',
-              style: const TextStyle(fontSize: 12, color: Colors.grey)),
+              style: const TextStyle(fontSize: 12, color: AppColors.muted)),
           const Divider(),
-          const Text('المستحقات', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.teal)),
+          const Text('المستحقات', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.brand)),
           ...lines.where((l) => l['kind'] == 'earning').map(line),
           const Divider(),
-          const Text('الاستقطاعات', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
+          const Text('الاستقطاعات', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.bad)),
           ...lines.where((l) => l['kind'] == 'deduction').map(line),
           const Divider(),
           Row(children: [
             const Expanded(child: Text('صافي الراتب', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
-            Text(formatIqd(asNum(p['net'])), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.teal)),
+            Text(formatIqd(asNum(p['net'])), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.brand)),
           ]),
         ],
       ),
@@ -438,7 +443,7 @@ Future<void> showPayslip(BuildContext context, String path, {Map? preloaded}) {
                   if (snap.connectionState != ConnectionState.done) {
                     return const SizedBox(height: 120, child: Center(child: CircularProgressIndicator()));
                   }
-                  if (snap.hasError) return Text('${snap.error}', style: const TextStyle(color: Colors.red));
+                  if (snap.hasError) return NoticeBanner(tone: Tone.bad, title: 'تعذر تحميل القسيمة', message: '${snap.error}');
                   return body(snap.data as Map);
                 },
               ),
@@ -524,7 +529,7 @@ class _ExpensesTabState extends State<_ExpensesTab> {
     });
     if (ok != true || !mounted) return;
     if (value == null || receipt == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('يرجى إدخال المبلغ وتصوير الوصل'), backgroundColor: Colors.red));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('يرجى إدخال المبلغ وتصوير الوصل'), backgroundColor: AppColors.bad));
       return;
     }
     await runApi(
@@ -551,17 +556,17 @@ class _ExpensesTabState extends State<_ExpensesTab> {
         return RefreshIndicator(
           onRefresh: reload,
           child: ListView(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(Gap.md),
             children: [
               ElevatedButton.icon(onPressed: _submit, icon: const Icon(Icons.add), label: const Text('مطالبة جديدة')),
               const SizedBox(height: 8),
-              if (list.isEmpty) const Padding(padding: EdgeInsets.all(16), child: Text('لا توجد مطالبات', style: TextStyle(color: Colors.grey))),
+              if (list.isEmpty) const EmptyState(icon: Icons.receipt_long_outlined, title: 'لم تقدّم مطالبات مصاريف بعد'),
               ...list.map((x) => Card(
                     child: ListTile(
                       title: Text('${expenseCategoryLabels[x['category']] ?? x['category']} | ${formatIqd(asNum(x['amount']))}'),
                       subtitle: Text('${x['expense_date']}${x['description'] != null ? ' | ${x['description']}' : ''}'
                           '${x['decision_note'] != null ? '\n${x['decision_note']}' : ''}'),
-                      trailing: StatusChip(expenseStatusLabels[x['status']] ?? '${x['status']}', statusColor(x['status'] as String?)),
+                      trailing: StatusChip(expenseStatusLabels[x['status']] ?? '${x['status']}', statusTone(x['status'] as String?)),
                     ),
                   )),
             ],
@@ -582,7 +587,7 @@ class _MyFileTab extends StatelessWidget {
     return ApiView(
       path: '/me/profile',
       builder: (context, p, reload) => ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(Gap.md),
         children: [
           Card(
             child: ListTile(
@@ -593,36 +598,34 @@ class _MyFileTab extends StatelessWidget {
               isThreeLine: true,
             ),
           ),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Wrap(spacing: 16, runSpacing: 8, children: [
+          AppCard(
+            padding: const EdgeInsets.all(Gap.md),
+            child: Wrap(spacing: 16, runSpacing: 8, children: [
                 Text('الراتب الأساسي: ${formatIqd(asNum(p['base_salary']))}'),
                 Text('بدل النقل: ${formatIqd(asNum(p['allowance_transport']))}'),
                 Text('بدل الهاتف: ${formatIqd(asNum(p['allowance_phone']))}'),
                 Text('بدل الخطورة: ${formatIqd(asNum(p['allowance_risk']))}'),
                 Text('طريقة الاستلام: ${p['payment_method'] ?? '-'}'),
               ]),
-            ),
           ),
           const SectionTitle('عهدتي'),
           ApiListSection(
             path: '/me/custody',
-            empty: 'لا توجد عهدة',
+            empty: 'لا توجد عهدة مسلّمة إليك',
             itemBuilder: (c) => ListTile(
               leading: const Icon(Icons.inventory_2),
               title: Text('${custodyTypeLabels[c['item_type']] ?? c['item_type']} - ${c['description']}'),
               subtitle: Text('${c['serial_no'] ?? ''} | ${formatIqd(asNum(c['value_iqd']))}'),
               trailing: StatusChip(c['status'] == 'assigned' ? 'بعهدتي' : (c['status'] == 'returned' ? 'مُعادة' : 'مفقودة'),
-                  statusColor(c['status'] == 'assigned' ? 'pending' : c['status'] as String?)),
+                  statusTone(c['status'] == 'assigned' ? 'pending' : c['status'] as String?)),
             ),
           ),
           const SectionTitle('التدريب'),
           ApiListSection(
             path: '/me/training',
-            empty: 'لا توجد دورات',
+            empty: 'لا توجد دورات مطلوبة منك حالياً',
             itemBuilder: (t) => ListTile(
-              leading: Icon(t['status'] == 'completed' ? Icons.verified : Icons.school, color: t['status'] == 'completed' ? Colors.green : Colors.orange),
+              leading: Icon(t['status'] == 'completed' ? Icons.verified : Icons.school, color: t['status'] == 'completed' ? AppColors.good : AppColors.warn),
               title: Text('${t['title']}'),
               subtitle: Text(t['status'] == 'completed' ? 'مكتملة${t['score'] != null ? ' | الدرجة ${t['score']}' : ''}' : 'مطلوب إكمالها'),
             ),
@@ -630,7 +633,7 @@ class _MyFileTab extends StatelessWidget {
           const SectionTitle('تقييمي الشهري'),
           ApiListSection(
             path: '/me/appraisals',
-            empty: 'لا يوجد تقييم بعد',
+            empty: 'لا يوجد تقييم بعد؛ يظهر بعد أن تحتسبه الموارد البشرية',
             itemBuilder: (a) => ListTile(
               leading: CircleAvatar(child: Text('${(asNum(a['final_score']) ?? 0).round()}')),
               title: Text('${a['period']} | ${a['recommendation']}'),
@@ -658,9 +661,9 @@ class ApiListSection extends StatelessWidget {
         if (snap.connectionState != ConnectionState.done) {
           return const Padding(padding: EdgeInsets.all(12), child: LinearProgressIndicator());
         }
-        if (snap.hasError) return Text('${snap.error}', style: const TextStyle(color: Colors.red));
+        if (snap.hasError) return NoticeBanner(tone: Tone.bad, title: 'تعذر التحميل', message: '${snap.error}');
         final list = (snap.data as List).cast<Map>();
-        if (list.isEmpty) return Text(empty, style: const TextStyle(color: Colors.grey));
+        if (list.isEmpty) return Text(empty, style: const TextStyle(color: AppColors.muted));
         return Column(children: list.map((i) => Card(child: itemBuilder(i))).toList());
       },
     );

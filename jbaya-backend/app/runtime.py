@@ -93,6 +93,12 @@ REGISTRY: dict[str, tuple] = {
     "WHATSAPP_LANG": ("str", "whatsapp", "لغة القوالب", "", False, {}),
     "HOTLINE": ("str", "whatsapp", "رقم الشكاوى", "", False, {}),
     "WHATSAPP_COST_USD": ("float", "whatsapp", "كلفة الرسالة (دولار)", "", False, {"min": 0}),
+    "CITIZEN_FIRST_MESSAGE": ("bool", "whatsapp", "المواطن يراسلنا أولاً (رسائل مجانية)",
+                              "يرسل المواطن رسالة لرقم الشركة فنرسل له الرمز والوصل مجاناً داخل نافذة 24 ساعة", False, {}),
+    "CITIZEN_WAIT_MINUTES": ("int", "whatsapp", "مدة انتظار رسالة المواطن (دقيقة)", "", False, {"min": 1, "max": 120}),
+    "WHATSAPP_BUSINESS_NUMBER": ("str", "whatsapp", "رقم واتساب الشركة", "بصيغة 9647XXXXXXXXX", False, {}),
+    "WINDOW_SAFETY_MINUTES": ("int", "whatsapp", "هامش أمان نافذة الـ24 ساعة (دقيقة)", "", False, {"min": 0, "max": 600}),
+    "OFFLINE_MAX_HOURS": ("int", "field", "العمل دون اتصال المتأخر أكثر من (ساعة) = إشارة", "", False, {"min": 1}),
     # ---- UI permissions (which role sees which tab); edited as a matrix
     "UI_PERMISSIONS": ("json", "permissions", "صلاحيات العرض", "", False, {}),
 }

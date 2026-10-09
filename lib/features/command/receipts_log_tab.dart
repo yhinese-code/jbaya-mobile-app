@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/format.dart';
+import '../../core/theme.dart';
 import 'cc_widgets.dart';
 
 /// Real receipts log (latest first) with search. Master-code receipts and flagged bills are highlighted.
@@ -55,7 +56,7 @@ class _ReceiptsLogTabState extends State<ReceiptsLogTab> {
     final total = rows.fold<double>(0, (s, r) => s + ((asNum(r['total_amount']) ?? 0).toDouble()));
 
     return Padding(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(Gap.lg),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

@@ -3,9 +3,10 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 
 import '../../core/format.dart';
+import '../../core/theme.dart';
 
 /// Shared colours, labels and small widgets for the tech panel (لوحة التقنية).
-const kTechColor = Color(0xFF1A237E);
+const kTechColor = AppColors.tech;
 
 const Map<String, String> techRoleLabels = {
   'collector': 'جابي',
@@ -95,7 +96,7 @@ String compactJson(dynamic v) {
 
 void showSnack(BuildContext context, String message, {bool error = false}) {
   ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(content: Text(message), backgroundColor: error ? Colors.red.shade700 : Colors.green.shade700),
+    SnackBar(content: Text(message), backgroundColor: error ? AppColors.bad : AppColors.good),
   );
 }
 
@@ -113,7 +114,7 @@ class InfoLine extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 15, color: color ?? Colors.grey.shade600),
+          Icon(icon, size: 15, color: color ?? AppColors.muted),
           const SizedBox(width: 6),
           Expanded(child: Text(text, style: TextStyle(fontSize: 13, color: color))),
         ],
@@ -128,10 +129,7 @@ class EmptyNote extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(24),
-      child: Center(child: Text(text, textAlign: TextAlign.center, style: const TextStyle(color: Colors.grey))),
-    );
+    return EmptyState(title: text);
   }
 }
 
@@ -208,7 +206,7 @@ class _FieldsDialogState extends State<_FieldsDialog> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               if (widget.intro != null) ...[
-                Text(widget.intro!, style: const TextStyle(color: Colors.grey, fontSize: 13)),
+                Text(widget.intro!, style: const TextStyle(color: AppColors.muted, fontSize: 13)),
                 const SizedBox(height: 8),
               ],
               for (var i = 0; i < widget.fields.length; i++)
@@ -227,7 +225,7 @@ class _FieldsDialogState extends State<_FieldsDialog> {
                     ),
                   ),
                 ),
-              if (_error != null) Text(_error!, style: const TextStyle(color: Colors.red)),
+              if (_error != null) NoticeBanner(tone: Tone.bad, title: _error!),
             ],
           ),
         ),

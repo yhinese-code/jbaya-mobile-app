@@ -4,6 +4,7 @@ import '../../core/session.dart';
 import '../collector/receipts_screen.dart';
 import '../collector/registration_screen.dart';
 import '../collector/route_screen.dart';
+import '../collector/widgets/offline_sync.dart';
 import '../collector/widgets/summary_bar.dart';
 import '../performance/performance_tabs.dart';
 
@@ -57,6 +58,7 @@ class _SupervisorFieldTabState extends State<SupervisorFieldTab> with AutomaticK
       children: [
         SummaryBar(key: _summaryKey),
         CoachCard(key: _coachKey),
+        const OfflineStrip(), // mobile only: work saved on the phone while offline
         const Divider(height: 1),
         Padding(
           padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),

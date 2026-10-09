@@ -228,7 +228,8 @@ def owner_today(user: dict = Depends(owner_only)):
         cur.execute("""SELECT (SELECT COUNT(*) FROM reconciliations WHERE resolution_status IN ('pending','pending_owner','escalated'))
                             + (SELECT COUNT(*) FROM cash_handovers WHERE resolution_status IN ('pending','pending_owner')) AS n""")
         diffs = cur.fetchone()["n"]
-        cur.execute("""SELECT COUNT(*) FILTER (WHERE status <> 'failed') AS sent, COUNT(*) FILTER (WHERE status = 'failed') AS failed
+        cur.execute("""SELECT COUNT(*) FILTER (WHERE status = 'sent') AS sent, COUNT(*) FILTER (WHERE status = 'failed') AS failed,
+                              COUNT(*) FILTER (WHERE status = 'free') AS free
                        FROM whatsapp_messages WHERE created_at >= date_trunc('month', NOW())""")
         wa = cur.fetchone()
         cur.execute("""SELECT status, COUNT(*) AS n FROM callback_audits WHERE assigned_date >= %s - 30 GROUP BY status""", (today,))
@@ -240,7 +241,7 @@ def owner_today(user: dict = Depends(owner_only)):
             "change": round(change, 4) if change is not None else None,
             "not_started": idle, "cash_outside_hq": cash["outside_hq"], "cash_alert": cash["outside_hq"] >= settings.CASH_OUTSIDE_HQ_ALERT_IQD,
             "master_code_uses": master, "open_differences": diffs, "open_sos": sos,
-            "whatsapp_month": {"messages": wa["sent"], "failed": wa["failed"],
+            "whatsapp_month": {"messages": wa["sent"], "failed": wa["failed"], "free_messages": wa["free"],
                                "cost_usd": round(wa["sent"] * settings.WHATSAPP_COST_USD, 2)},
             "callbacks_30_days": callbacks}
 

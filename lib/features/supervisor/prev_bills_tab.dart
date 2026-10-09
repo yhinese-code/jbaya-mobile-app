@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/format.dart';
+import '../../core/theme.dart';
 import '../shared/photo_dialog.dart';
 import '../shared/ui.dart';
 
@@ -45,15 +46,19 @@ class _PrevBillsReviewTabState extends State<PrevBillsReviewTab> {
         return RefreshIndicator(
           onRefresh: reload,
           child: ListView(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(Gap.md),
             children: [
               const Text(
                 'فواتير سابقة أدخلها الجباة من الميدان أو وجدوها مختلفة عن ملف دائرة الماء. قارن الصورة بالمبلغ قبل القرار.',
-                style: TextStyle(color: Colors.grey, fontSize: 12),
+                style: TextStyle(color: AppColors.muted, fontSize: 12),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: Gap.sm),
               if (list.isEmpty)
-                const Padding(padding: EdgeInsets.all(32), child: Center(child: Text('لا توجد فواتير بانتظار المراجعة'))),
+                const EmptyState(
+                  icon: Icons.task_alt,
+                  title: 'لا توجد فواتير سابقة بانتظار المراجعة',
+                  message: 'ستظهر هنا الفواتير الورقية التي يدخلها الجباة أو تختلف عن ملف الدائرة',
+                ),
               ...list.map(_card),
             ],
           ),
@@ -66,19 +71,18 @@ class _PrevBillsReviewTabState extends State<PrevBillsReviewTab> {
     final mismatch = r['status'] == 'mismatch';
     final flags = r['flags'] is List ? (r['flags'] as List).map((e) => '$e').toList() : const <String>[];
     final odd = flags.contains('odd_amount');
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
+    return AppCard(
+      accent: mismatch ? AppColors.bad : AppColors.warn,
+      child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(children: [
               Expanded(
                 child: Text('${r['property_code']} - ${r['citizen_name'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.bold)),
               ),
-              StatusChip(mismatch ? 'لا تطابق' : 'بانتظار المراجعة', mismatch ? Colors.red : Colors.orange),
+              StatusChip(mismatch ? 'لا تطابق' : 'بانتظار المراجعة', mismatch ? AppColors.bad : AppColors.warn),
             ]),
-            if (r['address'] != null) Text('${r['address']}', style: const TextStyle(color: Colors.grey, fontSize: 12)),
+            if (r['address'] != null) Text('${r['address']}', style: const TextStyle(color: AppColors.muted, fontSize: 12)),
             const SizedBox(height: 4),
             Text(
               '${r['source'] == 'import' ? 'من ملف دائرة الماء' : 'إدخال ميداني'}'
@@ -89,24 +93,24 @@ class _PrevBillsReviewTabState extends State<PrevBillsReviewTab> {
             ),
             if (odd) ...[
               const SizedBox(height: 6),
-              const StatusChip('مبلغ غير معتاد', Colors.deepOrange),
+              const StatusChip('مبلغ غير معتاد', AppColors.warn),
             ],
             const SizedBox(height: 8),
             if (mismatch)
               Row(children: [
-                Expanded(child: _amountBox('مبلغ ملف الدائرة', asNum(r['amount']), Colors.blueGrey)),
+                Expanded(child: _amountBox('مبلغ ملف الدائرة', asNum(r['amount']), AppColors.muted)),
                 const SizedBox(width: 8),
-                Expanded(child: _amountBox('مبلغ الفاتورة الورقية', asNum(r['field_amount']), Colors.deepOrange)),
+                Expanded(child: _amountBox('مبلغ الفاتورة الورقية', asNum(r['field_amount']), AppColors.warn)),
               ])
             else
-              _amountBox('المبلغ', asNum(r['amount']), Colors.teal),
+              _amountBox('المبلغ', asNum(r['amount']), AppColors.brand),
             if (r['note'] != null && '${r['note']}'.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.only(top: 6),
-                child: Text('ملاحظة: ${r['note']}', style: const TextStyle(color: Colors.grey)),
+                child: Text('ملاحظة: ${r['note']}', style: const TextStyle(color: AppColors.muted)),
               ),
             const SizedBox(height: 8),
-            Wrap(spacing: 8, runSpacing: 6, children: [
+            Wrap(spacing: Gap.sm, runSpacing: Gap.sm, children: [
               if (r['has_photo'] == true)
                 TextButton.icon(
                   onPressed: () => showEvidencePhoto(context, '/prev-bills/${r['id']}/photo', title: 'صورة الفاتورة الورقية'),
@@ -116,7 +120,7 @@ class _PrevBillsReviewTabState extends State<PrevBillsReviewTab> {
               if (mismatch) ...[
                 ElevatedButton(
                   onPressed: () => _decide(r, 'use_field_amount'),
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.deepOrange, foregroundColor: Colors.white),
+                  style: ElevatedButton.styleFrom(backgroundColor: AppColors.warn, foregroundColor: Colors.white),
                   child: const Text('اعتماد مبلغ الورقة'),
                 ),
                 OutlinedButton(
@@ -126,33 +130,37 @@ class _PrevBillsReviewTabState extends State<PrevBillsReviewTab> {
               ] else ...[
                 ElevatedButton(
                   onPressed: () => _decide(r, 'confirm'),
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
+                  style: ElevatedButton.styleFrom(backgroundColor: AppColors.good, foregroundColor: Colors.white),
                   child: const Text('اعتماد'),
                 ),
                 OutlinedButton(
                   onPressed: () => _decide(r, 'reject'),
-                  style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
+                  style: OutlinedButton.styleFrom(foregroundColor: AppColors.bad),
                   child: const Text('رفض'),
                 ),
               ],
             ]),
           ],
         ),
-      ),
     );
   }
 
   Widget _amountBox(String label, num? amount, Color color) {
     return Container(
-      padding: const EdgeInsets.all(10),
+      padding: const EdgeInsets.all(Gap.md),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
-        border: Border.all(color: color.withValues(alpha: 0.4)),
-        borderRadius: BorderRadius.circular(8),
+        color: color.withValues(alpha: 0.06),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+        borderRadius: BorderRadius.circular(Gap.radiusSm),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-        Text(formatIqd(amount), style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color)),
+        Text(label, style: const TextStyle(fontSize: 12, color: AppColors.muted)),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: AlignmentDirectional.centerStart,
+          child: Text(formatIqd(amount),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color, fontFeatures: const [FontFeature.tabularFigures()])),
+        ),
       ]),
     );
   }

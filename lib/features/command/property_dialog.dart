@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/format.dart';
+import '../../core/theme.dart';
 import '../shared/photo_dialog.dart';
 import 'cc_widgets.dart';
 
@@ -11,7 +12,7 @@ Future<void> showPropertyDialog(BuildContext context, String propertyCode) {
     context: context,
     builder: (ctx) => Dialog(
       backgroundColor: CC.panel,
-      insetPadding: const EdgeInsets.all(16),
+      insetPadding: const EdgeInsets.all(Gap.lg),
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 760, maxHeight: 760),
         child: FutureBuilder<dynamic>(
@@ -21,7 +22,7 @@ Future<void> showPropertyDialog(BuildContext context, String propertyCode) {
               return const SizedBox(height: 200, child: Center(child: CircularProgressIndicator()));
             }
             if (snap.hasError) {
-              return Padding(padding: const EdgeInsets.all(24), child: Text('${snap.error}', style: const TextStyle(color: CC.danger)));
+              return Padding(padding: const EdgeInsets.all(Gap.xl), child: Text('${snap.error}', style: const TextStyle(color: CC.danger)));
             }
             return _PropertyDetail(data: Map<String, dynamic>.from(snap.data as Map));
           },
@@ -77,7 +78,7 @@ class _PropertyDetail extends StatelessWidget {
         Flexible(
           child: ListView(
             shrinkWrap: true,
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(Gap.lg),
             children: [
               Wrap(
                 spacing: 24,
@@ -107,7 +108,7 @@ class _PropertyDetail extends StatelessWidget {
                 final paid = b['status'] == 'paid';
                 return Container(
                   margin: const EdgeInsets.only(bottom: 8),
-                  padding: const EdgeInsets.all(10),
+                  padding: const EdgeInsets.all(Gap.md),
                   decoration: BoxDecoration(
                     color: CC.panelHigh,
                     borderRadius: BorderRadius.circular(8),

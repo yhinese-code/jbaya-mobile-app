@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'theme.dart';
 
 /// 25500 -> "25,500 د.ع"
 String formatIqd(num? value) {
@@ -115,16 +116,18 @@ Color statusColor(String? s) {
     case 'completed':
     case 'present':
     case 'returned':
-      return const Color(0xFF2E7D32);
+      return AppColors.good;
     case 'rejected':
     case 'absent':
     case 'lost':
-      return const Color(0xFFC62828);
+      return AppColors.bad;
+    case 'leave':
+      return AppColors.info;
     case 'cancelled':
     case 'weekend':
-      return const Color(0xFF757575);
+      return AppColors.muted;
     default:
-      return const Color(0xFFEF6C00);
+      return AppColors.warn;
   }
 }
 

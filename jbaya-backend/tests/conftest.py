@@ -11,5 +11,7 @@ os.environ["OTP_RESEND_COOLDOWN_SECONDS"] = "0"
 os.environ["REQUIRE_METER_PHOTO"] = "false"
 os.environ["DEVICE_APPROVAL_REQUIRED"] = "false"   # test_phase5 switches it on
 os.environ["FAST_OTP_SECONDS"] = "0"
+os.environ["CITIZEN_FIRST_MESSAGE"] = "false"   # test_phase6 switches it on
+os.environ["WEBHOOK_ALLOW_UNSIGNED"] = "true"    # test_phase6 checks the signed path too
 os.environ["STORAGE_DIR"] = os.path.join(tempfile.gettempdir(), "jbaya-test-storage")
 sys.path.insert(0, os.path.dirname(__file__))

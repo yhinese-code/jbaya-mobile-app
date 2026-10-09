@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/session.dart';
+import '../../core/theme.dart';
 import '../hr/hr_tabs.dart';
 import '../performance/performance_tabs.dart';
 import '../self_service/self_service_screen.dart' show SelfServiceButton;
@@ -37,10 +38,10 @@ class FinancialPortalScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return PermittedTabs(
       tabs: _tabs,
-      appBar: (bar) => AppBar(
-        title: Text('قسم المالية - ${Session.instance.fullName}', style: const TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.green.shade800,
-        foregroundColor: Colors.white,
+      appBar: (bar) => portalAppBar(
+        title: 'قسم المالية',
+        subtitle: Session.instance.fullName,
+        color: AppColors.finance,
         actions: const [SelfServiceButton(), LogoutButton()],
         bottom: bar,
       ),

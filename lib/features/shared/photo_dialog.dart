@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/theme.dart';
 
 /// Loads an evidence photo from an authenticated endpoint ({mime, base64}) and shows it full size.
 Future<void> showEvidencePhoto(BuildContext context, String apiPath, {String title = 'الصورة'}) {
@@ -28,8 +29,8 @@ Future<void> showEvidencePhoto(BuildContext context, String apiPath, {String tit
                   }
                   if (snap.hasError) {
                     return Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Text(snap.error.toString(), style: const TextStyle(color: Colors.red)),
+                      padding: const EdgeInsets.all(Gap.lg),
+                      child: NoticeBanner(tone: Tone.bad, title: 'تعذر تحميل الصورة', message: snap.error.toString()),
                     );
                   }
                   final bytes = base64Decode((snap.data as Map)['base64'] as String);

@@ -6,6 +6,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../../core/api_client.dart';
 import '../../core/format.dart';
+import '../../core/theme.dart';
 import 'cc_widgets.dart';
 
 /// Replays one employee's day: GPS trail, where he collected, and a time slider with play/pause.
@@ -151,7 +152,7 @@ class _TrailTabState extends State<TrailTab> {
     final collected = stops.fold<double>(0, (s, x) => s + ((asNum(x['total_amount']) ?? 0).toDouble()));
 
     return Padding(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(Gap.md),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -285,7 +286,7 @@ class _TrailTabState extends State<TrailTab> {
             ),
           if (_trail != null && _points.isEmpty)
             const Padding(
-              padding: EdgeInsets.all(8),
+              padding: EdgeInsets.all(Gap.sm),
               child: Text('لا توجد بيانات موقع لهذا اليوم (التطبيق يرسل الموقع كل 30 ثانية أثناء فتحه)',
                   style: TextStyle(color: CC.muted)),
             ),

@@ -4,13 +4,13 @@ B) collection:   reading/estimate -> server computes amount -> bill notice + OTP
 C) fallback:     rotating master code (from Command) with a mandatory reason
 """
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from .. import audit, billing, codes, files, gain, runtime, whatsapp
+from .. import audit, billing, citizen_channel, files, gain, runtime, whatsapp
 from ..fieldwork import FIELD_ROLES
 from ..config import settings
 from ..db import dict_cursor, get_conn
@@ -119,18 +119,6 @@ def _bill_out(b: dict, p: dict | None = None) -> dict:
     return out
 
 
-def _send_payment_messages(cur, user: dict, bill: dict, prop: dict) -> dict:
-    """Creates a fresh payment OTP and sends: (1) bill notice with exact amount, (2) the code."""
-    ch, code = codes.create_challenge(cur, purpose="payment", property_id=prop["id"], bill_id=bill["id"],
-                                      phone=prop["whatsapp_phone"], created_by=user["id"])
-    whatsapp.send_bill_notice(prop["whatsapp_phone"], name=prop["citizen_name"], property_code=prop["property_code"],
-                              total=float(bill["total_amount"]), gov=float(bill["gov_amount"]),
-                              fee=float(bill["company_fee"]), collector_code=user["employee_code"])
-    whatsapp.send_otp(prop["whatsapp_phone"], code)
-    audit.log(cur, user["id"], "payment_otp_sent", "bill", bill["id"], {"challenge_id": ch["id"]})
-    return {"expires_at": ch["expires_at"].isoformat(), "resend_after_seconds": settings.OTP_RESEND_COOLDOWN_SECONDS}
-
-
 # ------------------------------------------------------------------ route (visit list)
 
 @router.get("/collector/route")
@@ -152,8 +140,8 @@ def my_route(user: dict = Depends(collector_only)):
                LEFT JOIN LATERAL (SELECT id, status FROM bills WHERE property_id = p.id
                                   AND status IN ('awaiting_otp','pending_approval','blocked_review')
                                   ORDER BY created_at DESC LIMIT 1) ob ON TRUE
-               WHERE p.sector_id = %s AND p.status = 'active'
-               ORDER BY lp.paid_at ASC NULLS FIRST""",
+               WHERE p.sector_id = %s AND (p.status = 'active' OR (p.status = 'pending_otp' AND p.flags ? 'offline_capture'))
+               ORDER BY (p.status = 'pending_otp') DESC, lp.paid_at ASC NULLS FIRST""",
             (sector["id"],),
         )
         rows = cur.fetchall()
@@ -174,6 +162,9 @@ def my_route(user: dict = Depends(collector_only)):
             "days_since_paid": days, "never_paid": r["last_paid_at"] is None,
             "last_reading": _num(r["last_reading"]), "status_color": color,
             "open_bill_id": r["open_bill_id"], "open_bill_status": r["open_bill_status"],
+            # houses registered offline wait for the citizen's number to be confirmed (code on this visit,
+            # or his WhatsApp message to the company number)
+            "status": r["status"], "needs_verification": r["status"] == "pending_otp",
         })
     return {"sector": {"id": sector["id"], "code": sector["code"], "name": sector["name"], "polygon": sector["polygon"]},
             "properties": items}
@@ -189,7 +180,8 @@ def phone_protocol(cur, user: dict, phone: str, lat: float, lng: float) -> list[
     cur.execute(
         """SELECT p.lat, p.lng, p.registered_by FROM properties p JOIN citizens c ON c.id = p.citizen_id
            WHERE c.whatsapp_phone = %s
-             AND (p.status = 'active' OR (p.status = 'pending_otp' AND p.registered_at > NOW() - INTERVAL '1 day'))""",
+             AND (p.status = 'active' OR (p.status = 'pending_otp'
+                  AND (p.flags ? 'offline_capture' OR p.registered_at > NOW() - INTERVAL '1 day')))""",
         (phone,),
     )
     houses = cur.fetchall()
@@ -221,81 +213,98 @@ class RegistrationIn(BaseModel):
     is_mocked: bool = False
 
 
-@router.post("/registrations")
-def start_registration(body: RegistrationIn, user: dict = Depends(collector_only)):
+def register_property(conn, cur, user: dict, body: RegistrationIn, captured_at: datetime | None = None) -> dict:
+    """Creates the citizen + house (status pending_otp). Shared by the live screen and offline sync
+    (captured_at = when the collector recorded it on the phone)."""
     phone = normalize_iraqi_phone(body.whatsapp_phone)
     if not phone:
         raise HTTPException(422, "رقم الواتساب غير صالح. مثال: 07801234567")
     _check_gps(body.lat, body.lng, body.gps_accuracy_m, body.is_mocked)
+    sector = _load_sector(cur, user["sector_id"])
+    runtime.check_switch(cur, "registration", user, sector["id"])
+    if settings.ENFORCE_GEOFENCE and not point_in_polygon(body.lat, body.lng, sector["polygon"]):
+        audit.log(cur, user["id"], "geofence_violation", "sector", sector["id"], {"lat": body.lat, "lng": body.lng})
+        conn.commit()
+        raise HTTPException(403, "أنت خارج حدود القاطع المخصص لك. يرجى التواجد داخل الزقاق")
 
+    # A collector must never register his own / a colleague's number as the citizen's.
+    cur.execute("SELECT employee_code FROM employees WHERE phone = %s", (phone,))
+    if cur.fetchone():
+        audit.log(cur, user["id"], "employee_phone_blocked", "phone", phone[-4:], {})
+        conn.commit()
+        raise HTTPException(403, "لا يمكن استخدام رقم يعود لموظف في المنظومة")
+
+    flags = phone_protocol(cur, user, phone, body.lat, body.lng)
+    if flags is None:
+        conn.commit()
+        raise HTTPException(403, "هذا الرقم مسجل على عدد كبير من العقارات ولا يمكن استخدامه. اطلب رقم واتساب آخر من المواطن")
+
+    cur.execute("""SELECT id, lat, lng FROM properties WHERE sector_id = %s
+                   AND (status = 'active' OR (status = 'pending_otp'
+                        AND (flags ? 'offline_capture' OR registered_at > NOW() - INTERVAL '1 day')))""",
+                (sector["id"],))
+    for other in cur.fetchall():
+        if haversine_m(body.lat, body.lng, other["lat"], other["lng"]) <= settings.DUPLICATE_RADIUS_M:
+            flags.append("possible_duplicate_location")
+            break
+    if captured_at is not None:
+        flags.append("offline_capture")
+        if datetime.now(timezone.utc) - captured_at > timedelta(hours=settings.OFFLINE_MAX_HOURS):
+            flags.append("offline_late_sync")
+
+    cur.execute("INSERT INTO citizens (full_name, whatsapp_phone) VALUES (%s, %s) RETURNING id",
+                (body.full_name.strip(), phone))
+    citizen_id = cur.fetchone()["id"]
+    cur.execute("SELECT 'BGD-' || LPAD(nextval('property_code_seq')::text, 6, '0') AS code")
+    code = cur.fetchone()["code"]
+    cur.execute(
+        """INSERT INTO properties (property_code, citizen_id, sector_id, address, property_class, lat, lng,
+                                   gps_accuracy_m, meter_serial, meter_status, flags, registered_by, directorate_account_no,
+                                   registered_at)
+           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s, COALESCE(%s, NOW())) RETURNING id""",
+        (code, citizen_id, sector["id"], body.address.strip(), body.property_class, body.lat, body.lng,
+         body.gps_accuracy_m, body.meter_serial, body.meter_status, json.dumps(flags), user["id"],
+         (body.account_no or "").strip() or None, captured_at),
+    )
+    property_id = cur.fetchone()["id"]
+    audit.log(cur, user["id"], "registration_started", "property", property_id,
+              {"flags": flags, "offline": captured_at is not None})
+    return {"id": property_id, "property_code": code, "whatsapp_phone": phone, "citizen_name": body.full_name.strip(),
+            "flags": flags}
+
+
+def _code_out(info: dict, phone: str) -> dict:
+    """Old fields kept for older app builds + the new `code` block (sent / waiting for the citizen's message)."""
+    return {"phone_masked": mask_phone(phone), "expires_at": info.get("expires_at"),
+            "resend_after_seconds": info.get("resend_after_seconds", settings.OTP_RESEND_COOLDOWN_SECONDS), "code": info}
+
+
+@router.post("/registrations")
+def start_registration(body: RegistrationIn, user: dict = Depends(collector_only)):
     with get_conn() as conn, dict_cursor(conn) as cur:
-        sector = _load_sector(cur, user["sector_id"])
-        runtime.check_switch(cur, "registration", user, sector["id"])
-        if settings.ENFORCE_GEOFENCE and not point_in_polygon(body.lat, body.lng, sector["polygon"]):
-            audit.log(cur, user["id"], "geofence_violation", "sector", sector["id"], {"lat": body.lat, "lng": body.lng})
-            conn.commit()
-            raise HTTPException(403, "أنت خارج حدود القاطع المخصص لك. يرجى التواجد داخل الزقاق")
-
-        # A collector must never register his own / a colleague's number as the citizen's.
-        cur.execute("SELECT employee_code FROM employees WHERE phone = %s", (phone,))
-        if cur.fetchone():
-            audit.log(cur, user["id"], "employee_phone_blocked", "phone", phone[-4:], {})
-            conn.commit()
-            raise HTTPException(403, "لا يمكن استخدام رقم يعود لموظف في المنظومة")
-
-        flags = phone_protocol(cur, user, phone, body.lat, body.lng)
-        if flags is None:
-            conn.commit()
-            raise HTTPException(403, "هذا الرقم مسجل على عدد كبير من العقارات ولا يمكن استخدامه. اطلب رقم واتساب آخر من المواطن")
-
-        cur.execute("""SELECT id, lat, lng FROM properties WHERE sector_id = %s
-                       AND (status = 'active' OR (status = 'pending_otp' AND registered_at > NOW() - INTERVAL '1 day'))""",
-                    (sector["id"],))
-        for other in cur.fetchall():
-            if haversine_m(body.lat, body.lng, other["lat"], other["lng"]) <= settings.DUPLICATE_RADIUS_M:
-                flags.append("possible_duplicate_location")
-                break
-
-        cur.execute("INSERT INTO citizens (full_name, whatsapp_phone) VALUES (%s, %s) RETURNING id",
-                    (body.full_name.strip(), phone))
-        citizen_id = cur.fetchone()["id"]
-        cur.execute("SELECT 'BGD-' || LPAD(nextval('property_code_seq')::text, 6, '0') AS code")
-        code = cur.fetchone()["code"]
-        cur.execute(
-            """INSERT INTO properties (property_code, citizen_id, sector_id, address, property_class, lat, lng,
-                                       gps_accuracy_m, meter_serial, meter_status, flags, registered_by, directorate_account_no)
-               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
-            (code, citizen_id, sector["id"], body.address.strip(), body.property_class, body.lat, body.lng,
-             body.gps_accuracy_m, body.meter_serial, body.meter_status, json.dumps(flags), user["id"],
-             (body.account_no or "").strip() or None),
-        )
-        property_id = cur.fetchone()["id"]
-        ch, otp = codes.create_challenge(cur, purpose="registration", property_id=property_id, bill_id=None,
-                                         phone=phone, created_by=user["id"])
-        whatsapp.send_otp(phone, otp)
-        audit.log(cur, user["id"], "registration_started", "property", property_id, {"flags": flags})
-
-    return {
-        "property_id": property_id,
-        "property_code": code,
-        "phone_masked": mask_phone(phone),
-        "expires_at": ch["expires_at"].isoformat(),
-        "resend_after_seconds": settings.OTP_RESEND_COOLDOWN_SECONDS,
-        "flags": flags,
-    }
+        prop = register_property(conn, cur, user, body)
+        info = citizen_channel.deliver_code(cur, purpose="registration", prop=prop, bill=None, user=user)
+    return {"property_id": prop["id"], "property_code": prop["property_code"], "flags": prop["flags"],
+            **_code_out(info, prop["whatsapp_phone"])}
 
 
 @router.post("/registrations/{property_id}/resend-otp")
-def resend_registration_otp(property_id: int, user: dict = Depends(collector_only)):
+def resend_registration_otp(property_id: int, channel: Literal["auto", "template"] = "auto",
+                            user: dict = Depends(collector_only)):
+    """channel=template: the paid WhatsApp code message (when the citizen cannot / will not message us)."""
     with get_conn() as conn, dict_cursor(conn) as cur:
         p = _load_property(cur, property_id, user, lock=True)
         if p["status"] != "pending_otp":
             raise HTTPException(409, "تم تأكيد هذا التسجيل مسبقاً")
-        ch, otp = codes.create_challenge(cur, purpose="registration", property_id=p["id"], bill_id=None,
-                                         phone=p["whatsapp_phone"], created_by=user["id"])
-        whatsapp.send_otp(p["whatsapp_phone"], otp)
-        audit.log(cur, user["id"], "registration_otp_resent", "property", p["id"], {})
-    return {"expires_at": ch["expires_at"].isoformat(), "resend_after_seconds": settings.OTP_RESEND_COOLDOWN_SECONDS}
+        info = citizen_channel.deliver_code(cur, purpose="registration", prop=p, bill=None, user=user, channel=channel)
+    return _code_out(info, p["whatsapp_phone"])
+
+
+@router.get("/registrations/{property_id}/code-status")
+def registration_code_status(property_id: int, user: dict = Depends(collector_only)):
+    with get_conn() as conn, dict_cursor(conn) as cur:
+        p = _load_property(cur, property_id, user)
+        return citizen_channel.code_status(cur, purpose="registration", property_id=p["id"], bill_id=None)
 
 
 @router.post("/registrations/{property_id}/verify")
@@ -309,6 +318,8 @@ def verify_registration(property_id: int, body: VerifyIn, user: dict = Depends(c
             if res.get("fast"):
                 cur.execute("""UPDATE properties SET flags = flags || '["fast_otp"]'::jsonb WHERE id = %s""", (p["id"],))
             cur.execute("UPDATE properties SET status = 'active', activated_at = NOW() WHERE id = %s", (p["id"],))
+            cur.execute("UPDATE citizen_code_waits SET status = 'cancelled' WHERE property_id = %s AND purpose = 'registration' "
+                        "AND status = 'waiting'", (p["id"],))
             cur.execute("UPDATE citizens SET phone_verified_at = NOW() WHERE id = %s", (p["citizen_id"],))
             audit.log(cur, user["id"], "registration_verified", "property", p["id"], {"method": res["method"]})
     if not res["ok"]:
@@ -331,76 +342,95 @@ class BillIn(BaseModel):
     ocr_reading: float | None = None                                # what the phone's OCR read, if available
 
 
+def create_bill_record(conn, cur, user: dict, body: BillIn, captured_at: datetime | None = None) -> tuple[dict, dict]:
+    """Prices and stores a bill. Shared by the live screen and offline sync (captured_at = when the reading was
+    taken on the phone; the period and the distance check use that moment and that place). Returns (bill, property)."""
+    p = _load_property(cur, body.property_id, user, lock=True)
+    if p["status"] != "active":
+        raise HTTPException(409, "يجب تأكيد رقم المواطن (OTP) قبل الجباية")
+    runtime.check_switch(cur, "collection", user, p["sector_id"])
+    if body.method == "estimate":
+        runtime.check_switch(cur, "estimates", user, p["sector_id"])
+
+    held = cash_in_hand(cur, user["id"])
+    if captured_at is None and held >= settings.CASH_IN_HAND_CAP_IQD:
+        audit.log(cur, user["id"], "cash_cap_blocked", "employee", user["employee_code"], {"cash_in_hand": held})
+        conn.commit()
+        raise HTTPException(423, f"تجاوزت الحد الأعلى للنقد بحوزتك ({held:,.0f} د.ع). سلّم النقد للمشرف قبل متابعة الجباية")
+    if body.method == "reading" and settings.REQUIRE_METER_PHOTO and not body.photo_base64:
+        raise HTTPException(422, "يجب تصوير العداد قبل إصدار الفاتورة")
+
+    extra_flags = []
+    if body.lat is None or body.lng is None:
+        extra_flags.append("no_gps")
+    else:
+        _check_gps(body.lat, body.lng, body.gps_accuracy_m, body.is_mocked)
+        dist = haversine_m(body.lat, body.lng, p["lat"], p["lng"])
+        if dist > settings.MAX_DISTANCE_FROM_PROPERTY_M:
+            raise HTTPException(403, f"أنت على بعد {dist:.0f} م من العقار. يجب التواجد عند العقار لإصدار الفاتورة")
+
+    cur.execute(
+        "SELECT id, status FROM bills WHERE property_id = %s AND status IN ('pending_approval','blocked_review')",
+        (p["id"],),
+    )
+    if cur.fetchone():
+        raise HTTPException(409, "يوجد فاتورة لهذا العقار قيد مراجعة المشرف")
+    if captured_at is not None:
+        # an offline reading that arrives late must never replace newer work on this house
+        cur.execute("""SELECT 1 FROM bills WHERE property_id = %s AND status <> 'cancelled' AND created_at > %s
+                       UNION ALL SELECT 1 FROM meter_readings WHERE property_id = %s AND taken_at > %s LIMIT 1""",
+                    (p["id"], captured_at, p["id"], captured_at))
+        if cur.fetchone():
+            raise HTTPException(409, "سُجّلت على هذا العقار فاتورة أو قراءة أحدث من هذه القراءة المحفوظة دون اتصال")
+    # a new reading replaces any unpaid bill that is still waiting for the citizen's code
+    cur.execute("UPDATE citizen_code_waits SET status = 'cancelled' WHERE property_id = %s AND purpose = 'payment' "
+                "AND status = 'waiting'", (p["id"],))
+    cur.execute("UPDATE bills SET status = 'cancelled', review_note = 'replaced by new bill' "
+                "WHERE property_id = %s AND status = 'awaiting_otp'", (p["id"],))
+    cur.execute("UPDATE otp_challenges SET status = 'superseded' WHERE property_id = %s AND purpose = 'payment' AND status = 'pending'",
+                (p["id"],))
+
+    cur.execute("SELECT * FROM tariffs WHERE property_class = %s", (p["property_class"],))
+    tariff = cur.fetchone()
+    if not tariff:
+        raise HTTPException(500, "لا توجد تعرفة لفئة هذا العقار")
+
+    reading = body.current_reading if body.method == "reading" else None
+    calc = billing.compute(cur, p, tariff, body.method, reading, now=captured_at)
+    if reading is not None and body.ocr_reading is not None \
+            and abs(body.ocr_reading - reading) > settings.OCR_MISMATCH_TOLERANCE:
+        extra_flags.append("ocr_mismatch")
+    if body.method == "reading" and not body.photo_base64:
+        extra_flags.append("no_photo")
+    if captured_at is not None:
+        extra_flags.append("offline_capture")
+        if datetime.now(timezone.utc) - captured_at > timedelta(hours=settings.OFFLINE_MAX_HOURS):
+            extra_flags.append("offline_late_sync")
+    calc["flags"] = calc["flags"] + extra_flags
+    photo_path = files.save_photo(body.photo_base64, "meters") if body.photo_base64 else None
+    cur.execute(
+        """INSERT INTO bills (property_id, collector_id, visit_type, billing_method, previous_reading, current_reading,
+                              consumption, unit_rate, period_days, gov_amount, company_fee, total_amount, status, flags,
+                              photo_path, ocr_reading)
+           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *""",
+        (p["id"], user["id"], calc["visit_type"], calc["billing_method"], calc["previous_reading"],
+         calc["current_reading"], calc["consumption"], calc["unit_rate"], calc["period_days"],
+         calc["gov_amount"], calc["company_fee"], calc["total_amount"], calc["status"], json.dumps(calc["flags"]),
+         photo_path, body.ocr_reading),
+    )
+    bill = cur.fetchone()
+    audit.log(cur, user["id"], "bill_created", "bill", bill["id"],
+              {"property_id": p["id"], "total": calc["total_amount"], "status": calc["status"], "flags": calc["flags"]})
+    return bill, p
+
+
 @router.post("/bills")
 def create_bill(body: BillIn, user: dict = Depends(collector_only)):
     with get_conn() as conn, dict_cursor(conn) as cur:
-        p = _load_property(cur, body.property_id, user, lock=True)
-        if p["status"] != "active":
-            raise HTTPException(409, "يجب تأكيد رقم المواطن (OTP) قبل الجباية")
-        runtime.check_switch(cur, "collection", user, p["sector_id"])
-        if body.method == "estimate":
-            runtime.check_switch(cur, "estimates", user, p["sector_id"])
-
-        held = cash_in_hand(cur, user["id"])
-        if held >= settings.CASH_IN_HAND_CAP_IQD:
-            audit.log(cur, user["id"], "cash_cap_blocked", "employee", user["employee_code"], {"cash_in_hand": held})
-            conn.commit()
-            raise HTTPException(423, f"تجاوزت الحد الأعلى للنقد بحوزتك ({held:,.0f} د.ع). سلّم النقد للمشرف قبل متابعة الجباية")
-        if body.method == "reading" and settings.REQUIRE_METER_PHOTO and not body.photo_base64:
-            raise HTTPException(422, "يجب تصوير العداد قبل إصدار الفاتورة")
-
-        extra_flags = []
-        if body.lat is None or body.lng is None:
-            extra_flags.append("no_gps")
-        else:
-            _check_gps(body.lat, body.lng, body.gps_accuracy_m, body.is_mocked)
-            dist = haversine_m(body.lat, body.lng, p["lat"], p["lng"])
-            if dist > settings.MAX_DISTANCE_FROM_PROPERTY_M:
-                raise HTTPException(403, f"أنت على بعد {dist:.0f} م من العقار. يجب التواجد عند العقار لإصدار الفاتورة")
-
-        cur.execute(
-            "SELECT id, status FROM bills WHERE property_id = %s AND status IN ('pending_approval','blocked_review')",
-            (p["id"],),
-        )
-        if cur.fetchone():
-            raise HTTPException(409, "يوجد فاتورة لهذا العقار قيد مراجعة المشرف")
-        # a new reading replaces any unpaid bill that is still waiting for the citizen's code
-        cur.execute("UPDATE bills SET status = 'cancelled', review_note = 'replaced by new bill' "
-                    "WHERE property_id = %s AND status = 'awaiting_otp'", (p["id"],))
-        cur.execute("UPDATE otp_challenges SET status = 'superseded' WHERE property_id = %s AND purpose = 'payment' AND status = 'pending'",
-                    (p["id"],))
-
-        cur.execute("SELECT * FROM tariffs WHERE property_class = %s", (p["property_class"],))
-        tariff = cur.fetchone()
-        if not tariff:
-            raise HTTPException(500, "لا توجد تعرفة لفئة هذا العقار")
-
-        reading = body.current_reading if body.method == "reading" else None
-        calc = billing.compute(cur, p, tariff, body.method, reading)
-        if reading is not None and body.ocr_reading is not None \
-                and abs(body.ocr_reading - reading) > settings.OCR_MISMATCH_TOLERANCE:
-            extra_flags.append("ocr_mismatch")
-        if body.method == "reading" and not body.photo_base64:
-            extra_flags.append("no_photo")
-        calc["flags"] = calc["flags"] + extra_flags
-        photo_path = files.save_photo(body.photo_base64, "meters") if body.photo_base64 else None
-        cur.execute(
-            """INSERT INTO bills (property_id, collector_id, visit_type, billing_method, previous_reading, current_reading,
-                                  consumption, unit_rate, period_days, gov_amount, company_fee, total_amount, status, flags,
-                                  photo_path, ocr_reading)
-               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *""",
-            (p["id"], user["id"], calc["visit_type"], calc["billing_method"], calc["previous_reading"],
-             calc["current_reading"], calc["consumption"], calc["unit_rate"], calc["period_days"],
-             calc["gov_amount"], calc["company_fee"], calc["total_amount"], calc["status"], json.dumps(calc["flags"]),
-             photo_path, body.ocr_reading),
-        )
-        bill = cur.fetchone()
-        audit.log(cur, user["id"], "bill_created", "bill", bill["id"],
-                  {"property_id": p["id"], "total": calc["total_amount"], "status": calc["status"], "flags": calc["flags"]})
+        bill, p = create_bill_record(conn, cur, user, body)
         otp_info = None
         if bill["status"] == "awaiting_otp":
-            otp_info = _send_payment_messages(cur, user, bill, p)
-
+            otp_info = citizen_channel.deliver_code(cur, purpose="payment", prop=p, bill=bill, user=user)
     out = _bill_out(bill, p)
     out["otp"] = otp_info
     return out
@@ -415,8 +445,9 @@ def get_bill(bill_id: int, user: dict = Depends(require_roles("collector", "supe
 
 
 @router.post("/bills/{bill_id}/send-otp")
-def send_bill_otp(bill_id: int, user: dict = Depends(collector_only)):
-    """Used for resend, and after a supervisor approves an estimate."""
+def send_bill_otp(bill_id: int, channel: Literal["auto", "template"] = "auto", user: dict = Depends(collector_only)):
+    """Used for resend, after a supervisor approves an estimate, and for bills from offline readings.
+    channel=template: the paid WhatsApp code message (when the citizen cannot / will not message us)."""
     with get_conn() as conn, dict_cursor(conn) as cur:
         b = _load_bill(cur, bill_id, user, lock=True)
         if b["collector_id"] != user["id"]:
@@ -424,8 +455,18 @@ def send_bill_otp(bill_id: int, user: dict = Depends(collector_only)):
         if b["status"] != "awaiting_otp":
             raise HTTPException(409, "لا يمكن إرسال رمز لهذه الفاتورة في حالتها الحالية")
         p = _load_property(cur, b["property_id"], user)
-        info = _send_payment_messages(cur, user, b, p)
+        held = cash_in_hand(cur, user["id"])
+        if held >= settings.CASH_IN_HAND_CAP_IQD:
+            raise HTTPException(423, f"تجاوزت الحد الأعلى للنقد بحوزتك ({held:,.0f} د.ع). سلّم النقد للمشرف قبل متابعة الجباية")
+        info = citizen_channel.deliver_code(cur, purpose="payment", prop=p, bill=b, user=user, channel=channel)
     return info
+
+
+@router.get("/bills/{bill_id}/code-status")
+def bill_code_status(bill_id: int, user: dict = Depends(collector_only)):
+    with get_conn() as conn, dict_cursor(conn) as cur:
+        b = _load_bill(cur, bill_id, user)
+        return citizen_channel.code_status(cur, purpose="payment", property_id=b["property_id"], bill_id=b["id"])
 
 
 @router.post("/bills/{bill_id}/verify")
@@ -441,6 +482,7 @@ def verify_bill(bill_id: int, body: VerifyIn, user: dict = Depends(collector_onl
         res = verify(cur, user, purpose="payment", property_id=p["id"], bill_id=b["id"], body=body)
         if res["ok"]:
             cur.execute("UPDATE bills SET status = 'paid', paid_at = NOW() WHERE id = %s", (b["id"],))
+            cur.execute("UPDATE citizen_code_waits SET status = 'cancelled' WHERE bill_id = %s AND status = 'waiting'", (b["id"],))
             if b["current_reading"] is not None:
                 if "rebaseline" in (b["flags"] or []):
                     rtype = "rebaseline"

@@ -6,6 +6,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../../core/api_client.dart';
 import '../../core/format.dart';
+import '../../core/theme.dart';
 import 'cc_widgets.dart';
 import 'property_dialog.dart';
 
@@ -180,7 +181,7 @@ class _LiveOpsTabState extends State<LiveOpsTab> {
       final kpis = _kpiStrip();
       if (wide) {
         return Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(Gap.md),
           child: Column(
             children: [
               kpis,
@@ -202,7 +203,7 @@ class _LiveOpsTabState extends State<LiveOpsTab> {
         );
       }
       return ListView(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(Gap.md),
         children: [
           kpis,
           const SizedBox(height: 12),
@@ -229,7 +230,7 @@ class _LiveOpsTabState extends State<LiveOpsTab> {
         if (_error != null)
           Container(
             margin: const EdgeInsets.only(bottom: 8),
-            padding: const EdgeInsets.all(8),
+            padding: const EdgeInsets.all(Gap.sm),
             color: CC.danger.withValues(alpha: 0.15),
             child: Text('تعذر التحديث: $_error', style: const TextStyle(color: CC.danger)),
           ),
@@ -268,7 +269,7 @@ class _LiveOpsTabState extends State<LiveOpsTab> {
               const SizedBox(width: 10),
               KpiTile(label: 'فواتير قيد المراجعة', value: '${_kpi['bills_in_review'] ?? 0}', icon: Icons.rule),
               const SizedBox(width: 10),
-              KpiTile(label: 'إيداعات بانتظار المالية', value: formatIqd(asNum(_kpi['deposits_pending_verification'])), icon: Icons.account_balance),
+              KpiTile(label: 'نقد خارج المقر', value: formatIqd(asNum(_kpi['cash_outside_hq'])), icon: Icons.account_balance),
             ],
           ),
         ),

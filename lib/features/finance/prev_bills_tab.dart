@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/format.dart';
+import '../../core/theme.dart';
 import '../shared/ui.dart';
 import 'charts.dart';
 
@@ -19,13 +20,13 @@ const Map<String, String> _summaryLabels = {
 };
 
 Color _summaryColor(String k) => switch (k) {
-      'matched' => Colors.green.shade700,
-      'unmatched' => Colors.orange.shade800,
-      'duplicates' => Colors.red.shade700,
-      'odd_amount' => Colors.amber.shade900,
-      'invalid' => Colors.red.shade900,
-      'skipped' => Colors.grey.shade600,
-      _ => Colors.blueGrey,
+      'matched' => AppColors.good,
+      'unmatched' => AppColors.warn,
+      'duplicates' => AppColors.bad,
+      'odd_amount' => AppColors.warn,
+      'invalid' => AppColors.bad,
+      'skipped' => AppColors.muted,
+      _ => AppColors.muted,
     };
 
 const Map<String, String> _matchedByLabels = {
@@ -42,9 +43,9 @@ const Map<String, String> _importStatusLabels = {
 };
 
 Color _importStatusColor(String s) => switch (s) {
-      'committed' => Colors.green.shade700,
-      'discarded' => Colors.grey.shade600,
-      _ => Colors.orange.shade800,
+      'committed' => AppColors.good,
+      'discarded' => AppColors.muted,
+      _ => AppColors.warn,
     };
 
 /// Colored chips for an import summary {total, matched, unmatched, duplicates, odd_amount, invalid, skipped}.
@@ -197,11 +198,11 @@ class _PrevBillsTabState extends State<PrevBillsTab> {
   Widget build(BuildContext context) {
     if (_loading) return const Center(child: CircularProgressIndicator());
     if (_error != null && _summary == null) {
-      return Center(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Text(_error!, style: const TextStyle(color: Colors.red)),
-          TextButton(onPressed: _load, child: const Text('إعادة المحاولة')),
-        ]),
+      return EmptyState(
+        icon: Icons.cloud_off,
+        title: 'تعذر تحميل البيانات',
+        message: _error,
+        action: OutlinedButton.icon(onPressed: _load, icon: const Icon(Icons.refresh), label: const Text('إعادة المحاولة')),
       );
     }
     final s = _summary ?? const {};
@@ -209,48 +210,45 @@ class _PrevBillsTabState extends State<PrevBillsTab> {
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(Gap.md),
         children: [
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          AppCard(
+            padding: const EdgeInsets.all(Gap.lg),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                 const Text('تغطية الفواتير السابقة', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 4),
                 const Text('الفاتورة السابقة لكل منزل هي أساس حساب الزيادة (الخيار ب من صيغة الـ35%).',
-                    style: TextStyle(fontSize: 12, color: Colors.grey)),
+                    style: TextStyle(fontSize: 12, color: AppColors.muted)),
                 const SizedBox(height: 12),
                 Row(children: [
                   Text(pctText(coverage, digits: 1),
                       style: TextStyle(
                           fontSize: 28,
                           fontWeight: FontWeight.bold,
-                          color: (coverage ?? 0) >= 0.9 ? Colors.green.shade700 : Colors.orange.shade800)),
+                          color: (coverage ?? 0) >= 0.9 ? AppColors.good : AppColors.warn)),
                   const SizedBox(width: 12),
                   Expanded(
                     child: LinearProgressIndicator(
                       value: (coverage ?? 0).clamp(0.0, 1.0),
                       minHeight: 10,
                       borderRadius: BorderRadius.circular(6),
-                      color: (coverage ?? 0) >= 0.9 ? Colors.green : Colors.orange,
-                      backgroundColor: Colors.grey.withValues(alpha: 0.2),
+                      color: (coverage ?? 0) >= 0.9 ? AppColors.good : AppColors.warn,
+                      backgroundColor: AppColors.muted.withValues(alpha: 0.2),
                     ),
                   ),
                 ]),
                 const SizedBox(height: 12),
                 Wrap(spacing: 8, runSpacing: 8, children: [
-                  StatusChip('العقارات الفعالة: ${formatNumber(asNum(s['houses']))}', Colors.blueGrey),
-                  StatusChip('لها فاتورة مؤكدة: ${formatNumber(asNum(s['confirmed']))}', Colors.green.shade700),
-                  StatusChip('بانتظار المراجعة: ${formatNumber(asNum(s['waiting']))}', Colors.orange.shade800),
-                  StatusChip('لا تطابق الميدان: ${formatNumber(asNum(s['mismatches']))}', Colors.red.shade700),
+                  StatusChip('العقارات الفعالة: ${formatNumber(asNum(s['houses']))}', AppColors.muted),
+                  StatusChip('لها فاتورة مؤكدة: ${formatNumber(asNum(s['confirmed']))}', AppColors.good),
+                  StatusChip('بانتظار المراجعة: ${formatNumber(asNum(s['waiting']))}', AppColors.warn),
+                  StatusChip('لا تطابق الميدان: ${formatNumber(asNum(s['mismatches']))}', AppColors.bad),
                 ]),
               ]),
-            ),
           ),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          AppCard(
+            padding: const EdgeInsets.all(Gap.lg),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                 const Text('رفع ملف دائرة الماء', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 6),
                 const Text('ملف Excel (xlsx) أو CSV. الصف الأول عناوين الأعمدة. الأعمدة المقبولة:'),
@@ -268,7 +266,7 @@ class _PrevBillsTabState extends State<PrevBillsTab> {
                 const SizedBox(height: 6),
                 const Text(
                   'يجب وجود رقم الحساب أو رقم العداد أو الهاتف لمطابقة العقارات. لا يُحفظ شيء قبل المراجعة والضغط على «اعتماد».',
-                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                  style: TextStyle(fontSize: 12, color: AppColors.muted),
                 ),
                 const SizedBox(height: 12),
                 Align(
@@ -282,22 +280,18 @@ class _PrevBillsTabState extends State<PrevBillsTab> {
                   ),
                 ),
               ]),
-            ),
           ),
           const SectionTitle('الملفات السابقة'),
-          if (_imports.isEmpty) const Padding(padding: EdgeInsets.all(24), child: Center(child: Text('لم يُرفع أي ملف بعد'))),
+          if (_imports.isEmpty) const EmptyState(icon: Icons.upload_file, title: 'لم يُرفع أي ملف بعد', message: 'ارفع ملف دائرة الماء أعلاه لبدء المطابقة'),
           ..._imports.map((i) {
             final status = '${i['status']}';
             final summary = i['summary'] is Map ? i['summary'] as Map : const {};
-            return Card(
-              child: InkWell(
-                borderRadius: BorderRadius.circular(12),
+            return AppCard(
+                padding: const EdgeInsets.all(Gap.md),
                 onTap: () {
                   final id = asNum(i['id'])?.toInt();
                   if (id != null) _open(id);
                 },
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Row(children: [
                       const Icon(Icons.description_outlined),
@@ -306,12 +300,10 @@ class _PrevBillsTabState extends State<PrevBillsTab> {
                       StatusChip(_importStatusLabels[status] ?? status, _importStatusColor(status)),
                     ]),
                     Text('${formatDate(i['uploaded_at'])} ${formatTime(i['uploaded_at'])} | ${i['uploaded_by'] ?? ''}',
-                        style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                        style: const TextStyle(fontSize: 12, color: AppColors.muted)),
                     const SizedBox(height: 6),
                     _SummaryChips(summary, hideZero: true),
                   ]),
-                ),
-              ),
             );
           }),
           const SizedBox(height: 24),
@@ -422,7 +414,7 @@ class _PrevBillImportScreenState extends State<PrevBillImportScreen> {
         );
       } else {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(e.message), backgroundColor: Colors.red.shade700));
+            .showSnackBar(SnackBar(content: Text(e.message), backgroundColor: AppColors.bad));
       }
     }
     if (!mounted) return;
@@ -446,10 +438,9 @@ class _PrevBillImportScreenState extends State<PrevBillImportScreen> {
     final status = '${d?['status'] ?? ''}';
     final staged = status == 'staged';
     return Scaffold(
-      appBar: AppBar(
-        title: Text(d == null ? 'مراجعة الملف' : '${d['filename']}'),
-        backgroundColor: Colors.green.shade800,
-        foregroundColor: Colors.white,
+      appBar: portalAppBar(
+        title: d == null ? 'مراجعة الملف' : '${d['filename']}',
+        color: AppColors.finance,
         actions: [IconButton(tooltip: 'تحديث', onPressed: _load, icon: const Icon(Icons.refresh))],
       ),
       bottomNavigationBar: staged
@@ -460,7 +451,7 @@ class _PrevBillImportScreenState extends State<PrevBillImportScreen> {
                   Expanded(
                     child: ElevatedButton.icon(
                       onPressed: _busy ? null : _commit,
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.green.shade700, foregroundColor: Colors.white),
+                      style: ElevatedButton.styleFrom(backgroundColor: AppColors.good, foregroundColor: Colors.white),
                       icon: const Icon(Icons.check_circle),
                       label: const Text('اعتماد'),
                     ),
@@ -468,7 +459,7 @@ class _PrevBillImportScreenState extends State<PrevBillImportScreen> {
                   const SizedBox(width: 12),
                   OutlinedButton.icon(
                     onPressed: _busy ? null : _discard,
-                    style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
+                    style: OutlinedButton.styleFrom(foregroundColor: AppColors.bad),
                     icon: const Icon(Icons.delete_outline),
                     label: const Text('إلغاء الملف'),
                   ),
@@ -483,11 +474,11 @@ class _PrevBillImportScreenState extends State<PrevBillImportScreen> {
   Widget _body(Map? d, String status, bool staged) {
     if (_loading) return const Center(child: CircularProgressIndicator());
     if (_error != null && d == null) {
-      return Center(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Text(_error!, style: const TextStyle(color: Colors.red)),
-          TextButton(onPressed: _load, child: const Text('إعادة المحاولة')),
-        ]),
+      return EmptyState(
+        icon: Icons.cloud_off,
+        title: 'تعذر تحميل البيانات',
+        message: _error,
+        action: OutlinedButton.icon(onPressed: _load, icon: const Icon(Icons.refresh), label: const Text('إعادة المحاولة')),
       );
     }
     final data = d ?? const {};
@@ -496,22 +487,17 @@ class _PrevBillImportScreenState extends State<PrevBillImportScreen> {
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(Gap.md),
         children: [
           if (widget.columnsFound != null && widget.columnsFound!.isNotEmpty)
-            Card(
-              color: Colors.blue.withValues(alpha: 0.06),
-              child: ListTile(
-                dense: true,
-                leading: const Icon(Icons.view_column, color: Colors.blue),
-                title: const Text('الأعمدة التي تعرّف عليها النظام'),
-                subtitle: Text(widget.columnsFound!.map((c) => _columnLabels[c] ?? c).join('، ')),
-              ),
+            NoticeBanner(
+              icon: Icons.view_column,
+              title: 'الأعمدة التي تعرّف عليها النظام',
+              message: widget.columnsFound!.map((c) => _columnLabels[c] ?? c).join('، '),
             ),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          AppCard(
+            padding: const EdgeInsets.all(Gap.md),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Row(children: [
                   const Expanded(child: Text('ملخص الملف', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16))),
                   StatusChip(_importStatusLabels[status] ?? status, _importStatusColor(status)),
@@ -520,10 +506,9 @@ class _PrevBillImportScreenState extends State<PrevBillImportScreen> {
                 _SummaryChips(summary),
                 if (!staged) ...[
                   const SizedBox(height: 8),
-                  const Text('هذا الملف لم يعد قابلاً للتعديل.', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                  const Text('هذا الملف لم يعد قابلاً للتعديل.', style: TextStyle(fontSize: 12, color: AppColors.muted)),
                 ],
               ]),
-            ),
           ),
           const SizedBox(height: 8),
           SegmentedButton<String>(
@@ -540,15 +525,15 @@ class _PrevBillImportScreenState extends State<PrevBillImportScreen> {
           ),
           const SizedBox(height: 8),
           if (rows.isEmpty)
-            Padding(
-              padding: const EdgeInsets.all(24),
-              child: Center(child: Text(_show == 'problems' ? 'لا مشاكل في هذا الملف' : 'لا صفوف')),
+            EmptyState(
+              icon: _show == 'problems' ? Icons.task_alt : Icons.table_rows_outlined,
+              title: _show == 'problems' ? 'لا مشاكل في هذا الملف' : 'لا صفوف في هذا العرض',
             ),
           ...rows.map((r) => _rowCard(r, staged)),
           if (rows.length >= 500)
             const Padding(
               padding: EdgeInsets.all(8),
-              child: Text('تُعرض أول 500 صف فقط.', style: TextStyle(color: Colors.grey, fontSize: 12)),
+              child: Text('تُعرض أول 500 صف فقط.', style: TextStyle(color: AppColors.muted, fontSize: 12)),
             ),
           const SizedBox(height: 24),
         ],
@@ -577,35 +562,34 @@ class _PrevBillImportScreenState extends State<PrevBillImportScreen> {
       if (r['meter_serial'] != null) 'عداد ${r['meter_serial']}',
       if (r['phone'] != null) '${r['phone']}',
     ];
-    return Card(
-      color: skip ? Colors.grey.withValues(alpha: 0.08) : null,
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    return AppCard(
+      accent: skip ? AppColors.faint : (issue != null ? AppColors.bad : (!matched || odd ? AppColors.warn : null)),
+      padding: const EdgeInsets.all(Gap.md),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
-            Text('سطر ${r['line']}', style: const TextStyle(color: Colors.grey, fontSize: 12)),
+            Text('سطر ${r['line']}', style: const TextStyle(color: AppColors.muted, fontSize: 12)),
             const SizedBox(width: 8),
             Expanded(
               child: Text('${r['name'] ?? '-'}',
                   style: TextStyle(fontWeight: FontWeight.bold, decoration: skip ? TextDecoration.lineThrough : null)),
             ),
             Text(asNum(r['amount']) == null ? 'بلا مبلغ' : formatIqd(asNum(r['amount'])),
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, fontFeatures: [FontFeature.tabularFigures()])),
           ]),
           if (ids.isNotEmpty) Text(ids.join(' | '), style: const TextStyle(fontSize: 12)),
           Text('المدة ${r['period_days'] ?? 30} يوماً${r['bill_date'] != null ? ' | ${r['bill_date']}' : ''}',
-              style: const TextStyle(fontSize: 12, color: Colors.grey)),
+              style: const TextStyle(fontSize: 12, color: AppColors.muted)),
           const SizedBox(height: 6),
           Wrap(spacing: 6, runSpacing: 6, children: [
             if (matched)
               StatusChip('العقار ${r['property_code']} (${_matchedByLabels['${r['matched_by']}'] ?? r['matched_by']})',
-                  Colors.green.shade700)
+                  AppColors.good)
             else
-              StatusChip('بلا عقار', Colors.orange.shade800),
-            if (issue == 'duplicate') StatusChip('عقار مكرر في الملف', Colors.red.shade700),
-            if (issue == 'invalid') StatusChip('مبلغ غير صالح', Colors.red.shade900),
-            if (odd) StatusChip('مبلغ غير معتاد', Colors.amber.shade900),
-            if (skip) StatusChip('متخطى', Colors.grey.shade600),
+              StatusChip('بلا عقار', AppColors.warn),
+            if (issue == 'duplicate') StatusChip('عقار مكرر في الملف', AppColors.bad),
+            if (issue == 'invalid') StatusChip('مبلغ غير صالح', AppColors.bad),
+            if (odd) StatusChip('مبلغ غير معتاد', AppColors.warn),
+            if (skip) StatusChip('متخطى', AppColors.muted),
           ]),
           if (staged) ...[
             const SizedBox(height: 6),
@@ -628,7 +612,6 @@ class _PrevBillImportScreenState extends State<PrevBillImportScreen> {
             ]),
           ],
         ]),
-      ),
     );
   }
 }

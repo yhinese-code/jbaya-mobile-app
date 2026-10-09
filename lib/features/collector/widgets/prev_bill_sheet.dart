@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/api_client.dart';
 import '../../../core/format.dart';
 import '../../../core/photo_service.dart';
+import '../../../core/theme.dart';
 import '../../shared/ui.dart';
 
 const _prevStatusLabels = {
@@ -12,7 +13,7 @@ const _prevStatusLabels = {
   'recorded': 'سُجّل: لا توجد فاتورة سابقة',
 };
 
-Color _prevStatusColor(String? s) => s == 'confirmed' ? const Color(0xFF2E7D32) : const Color(0xFFEF6C00);
+Color _prevStatusColor(String? s) => s == 'confirmed' ? AppColors.good : AppColors.warn;
 
 /// Arabic-Indic digits and thousands separators -> a plain number.
 double? _parseAmount(String text) {
@@ -107,14 +108,18 @@ class PrevBillCardState extends State<PrevBillCard> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Card(child: ListTile(leading: Icon(Icons.history_edu), title: Text('الفاتورة السابقة'), subtitle: LinearProgressIndicator()));
+      return const AppCard(
+        padding: EdgeInsets.zero,
+        child: ListTile(leading: Icon(Icons.history_edu), title: Text('الفاتورة السابقة'), subtitle: LinearProgressIndicator()),
+      );
     }
     if (_d == null) {
-      return Card(
+      return AppCard(
+        padding: EdgeInsets.zero,
         child: ListTile(
-          leading: const Icon(Icons.history_edu, color: Colors.grey),
+          leading: const Icon(Icons.history_edu, color: AppColors.faint),
           title: const Text('الفاتورة السابقة'),
-          subtitle: Text(_error ?? 'تعذر التحميل', style: const TextStyle(color: Colors.red, fontSize: 12)),
+          subtitle: Text(_error ?? 'تعذر التحميل', style: const TextStyle(color: AppColors.bad, fontSize: 12)),
           trailing: IconButton(tooltip: 'إعادة المحاولة', icon: const Icon(Icons.refresh), onPressed: reload),
         ),
       );
@@ -125,17 +130,16 @@ class PrevBillCardState extends State<PrevBillCard> {
     final status = pb == null ? _result : '${pb['status']}';
     final pending = status == 'pending_review' || status == 'mismatch';
 
-    return Card(
-      color: needsAction && _result == null ? Colors.amber.shade50 : null,
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
+    return AppCard(
+      accent: needsAction && _result == null ? AppColors.warn : null,
+      padding: const EdgeInsets.all(Gap.md),
+      child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Row(children: [
-              const Icon(Icons.history_edu, color: Color(0xFF004D40)),
-              const SizedBox(width: 8),
-              const Expanded(child: Text('الفاتورة السابقة', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF004D40)))),
+              const Icon(Icons.history_edu, color: AppColors.brand),
+              const SizedBox(width: Gap.sm),
+              const Expanded(child: Text('الفاتورة السابقة', style: TextStyle(fontWeight: FontWeight.w700))),
               if (status != null) StatusChip(_prevStatusLabels[status] ?? status, _prevStatusColor(status)),
             ]),
             const SizedBox(height: 6),
@@ -145,19 +149,19 @@ class PrevBillCardState extends State<PrevBillCard> {
                 '${pb['source'] == 'import' ? 'من ملف دائرة الماء' : 'إدخال ميداني'}'
                 ' | المدة ${pb['period_days']} يوم'
                 '${pb['bill_date'] != null ? ' | بتاريخ ${formatDate(pb['bill_date'])}' : ''}',
-                style: const TextStyle(fontSize: 12, color: Colors.grey),
+                style: const TextStyle(fontSize: 12, color: AppColors.muted),
               ),
               if (pb['field_amount'] != null)
-                Text('المبلغ في الورقة: ${formatIqd(asNum(pb['field_amount']))}', style: const TextStyle(color: Colors.orange)),
+                Text('المبلغ في الورقة: ${formatIqd(asNum(pb['field_amount']))}', style: const TextStyle(color: AppColors.warn)),
             ] else
               const Text('لا توجد فاتورة سابقة مسجلة لهذا العقار. صوّر فاتورة المواطن القديمة إن وُجدت.',
                   style: TextStyle(fontSize: 13)),
             if (d['account_no'] != null)
-              Text('رقم الحساب: ${d['account_no']}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+              Text('رقم الحساب: ${d['account_no']}', style: const TextStyle(fontSize: 12, color: AppColors.muted)),
             if (pending)
               const Padding(
                 padding: EdgeInsets.only(top: 6),
-                child: Text('بانتظار مراجعة المشرف', style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
+                child: Text('بانتظار مراجعة المشرف', style: TextStyle(color: AppColors.warn, fontWeight: FontWeight.bold)),
               ),
             if (_busy) const Padding(padding: EdgeInsets.only(top: 8), child: LinearProgressIndicator()),
             if (needsAction && !_busy && _result != 'recorded') ...[
@@ -168,27 +172,25 @@ class PrevBillCardState extends State<PrevBillCard> {
                     onPressed: _confirm,
                     icon: const Icon(Icons.check),
                     label: const Text('مطابقة للورقة'),
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
+                    style: ElevatedButton.styleFrom(backgroundColor: AppColors.good, foregroundColor: Colors.white),
                   ),
                   OutlinedButton.icon(
                     onPressed: () => _form(mismatch: true),
                     icon: const Icon(Icons.compare_arrows),
                     label: const Text('لا تطابق'),
-                    style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
+                    style: OutlinedButton.styleFrom(foregroundColor: AppColors.bad),
                   ),
                 ] else ...[
                   ElevatedButton.icon(
                     onPressed: () => _form(mismatch: false),
                     icon: const Icon(Icons.camera_alt),
                     label: const Text('إدخال الفاتورة'),
-                    style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF004D40), foregroundColor: Colors.white),
                   ),
                   OutlinedButton(onPressed: _none, child: const Text('لا توجد فاتورة سابقة')),
                 ],
               ]),
             ],
           ],
-        ),
       ),
     );
   }
@@ -319,14 +321,14 @@ class _PrevBillFormState extends State<_PrevBillForm> {
               TextField(
                 controller: _amount,
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(labelText: 'المبلغ في الفاتورة الورقية (د.ع)', border: OutlineInputBorder()),
+                decoration: const InputDecoration(labelText: 'المبلغ في الفاتورة الورقية (د.ع)'),
               ),
               if (!widget.mismatch) ...[
                 const SizedBox(height: 10),
                 TextField(
                   controller: _days,
                   keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: 'مدة الفاتورة (يوم)', border: OutlineInputBorder()),
+                  decoration: const InputDecoration(labelText: 'مدة الفاتورة (يوم)'),
                 ),
                 const SizedBox(height: 10),
                 OutlinedButton.icon(
@@ -337,18 +339,18 @@ class _PrevBillFormState extends State<_PrevBillForm> {
                 const SizedBox(height: 10),
                 TextField(
                   controller: _account,
-                  decoration: const InputDecoration(labelText: 'رقم الحساب في دائرة الماء (اختياري)', border: OutlineInputBorder()),
+                  decoration: const InputDecoration(labelText: 'رقم الحساب في دائرة الماء (اختياري)'),
                 ),
               ],
               const SizedBox(height: 10),
               TextField(
                 controller: _note,
                 maxLines: 2,
-                decoration: const InputDecoration(labelText: 'ملاحظة (اختياري)', border: OutlineInputBorder()),
+                decoration: const InputDecoration(labelText: 'ملاحظة (اختياري)'),
               ),
               if (_error != null) ...[
                 const SizedBox(height: 8),
-                Text(_error!, style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+                Text(_error!, style: const TextStyle(color: AppColors.bad, fontWeight: FontWeight.bold)),
               ],
             ],
           ),

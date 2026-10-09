@@ -17,6 +17,8 @@ os.environ["OTP_RESEND_COOLDOWN_SECONDS"] = "0"
 os.environ["REQUIRE_METER_PHOTO"] = "false"   # phase 1 tests switch it on
 os.environ["DEVICE_APPROVAL_REQUIRED"] = "false"
 os.environ["FAST_OTP_SECONDS"] = "0"
+os.environ["CITIZEN_FIRST_MESSAGE"] = "false"   # test_phase6 switches it on
+os.environ["WEBHOOK_ALLOW_UNSIGNED"] = "true"    # test_phase6 checks the signed path too
 os.environ["STORAGE_DIR"] = os.path.join(tempfile.gettempdir(), "jbaya-test-storage")
 
 from fastapi.testclient import TestClient  # noqa: E402

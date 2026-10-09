@@ -3,9 +3,19 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../core/format.dart';
+import '../../core/theme.dart';
 
 /// Lightweight charts drawn with CustomPainter (no chart package needed).
 /// Time always runs left -> right, even inside the RTL app.
+
+/// Series colours for charts: distinguishable, calm, from the app palette (status colours only when the series means one).
+class ChartColors {
+  ChartColors._();
+  static const primary = AppColors.brand;
+  static const secondary = AppColors.info;
+  static const tertiary = AppColors.warn;
+  static const quiet = AppColors.faint;
+}
 
 class LineSeries {
   final String name;
@@ -143,8 +153,8 @@ class _LinePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final n = labels.length;
     if (n == 0) return;
-    final axis = dark ? Colors.white54 : Colors.black45;
-    final grid = dark ? Colors.white12 : Colors.black12;
+    final axis = dark ? Colors.white54 : AppColors.muted;
+    final grid = dark ? Colors.white12 : AppColors.border;
     var maxV = 0.0;
     for (final s in series) {
       for (final v in s.values) {
@@ -314,7 +324,7 @@ class SimpleBarChart extends StatelessWidget {
     required this.labels,
     required this.values,
     this.reference,
-    this.color = Colors.indigo,
+    this.color = AppColors.brand,
     this.colors,
     this.height = 220,
     this.yFormat,
@@ -348,7 +358,7 @@ class SimpleBarChart extends StatelessWidget {
                   ]),
                 if (referenceName != null)
                   Row(mainAxisSize: MainAxisSize.min, children: [
-                    Container(width: 14, height: 3, color: Colors.red),
+                    Container(width: 14, height: 3, color: AppColors.bad),
                     const SizedBox(width: 4),
                     Text(referenceName!, style: const TextStyle(fontSize: 12)),
                   ]),
@@ -375,7 +385,7 @@ class _BarPainter extends CustomPainter {
     final n = values.length;
     if (n == 0) return;
     const left = 48.0, right = 8.0, top = 8.0, bottom = 22.0;
-    final axis = dark ? Colors.white54 : Colors.black45;
+    final axis = dark ? Colors.white54 : AppColors.muted;
     var maxV = values.fold<double>(0, math.max);
     if (reference != null) maxV = math.max(maxV, reference!.fold<double>(0, math.max));
     if (maxV <= 0) maxV = 1;
@@ -386,7 +396,7 @@ class _BarPainter extends CustomPainter {
     final slot = w / n;
     double y(double v) => top + h - (v / maxV) * h;
     final grid = Paint()
-      ..color = dark ? Colors.white12 : Colors.black12
+      ..color = dark ? Colors.white12 : AppColors.border
       ..strokeWidth = 1;
     for (var g = 0; g <= 4; g++) {
       final v = maxV * g / 4;
@@ -406,7 +416,7 @@ class _BarPainter extends CustomPainter {
     }
     if (reference != null) {
       final p = Paint()
-        ..color = Colors.red
+        ..color = AppColors.bad
         ..strokeWidth = 2;
       Offset? prev;
       for (var i = 0; i < n && i < reference!.length; i++) {
@@ -426,37 +436,49 @@ class _BarPainter extends CustomPainter {
 class HBarList extends StatelessWidget {
   final List<({String label, double value, String? trailing})> rows;
   final Color color;
-  const HBarList({super.key, required this.rows, this.color = Colors.teal});
+  const HBarList({super.key, required this.rows, this.color = AppColors.brand});
 
   @override
   Widget build(BuildContext context) {
     final maxV = rows.fold<double>(0, (m, r) => math.max(m, r.value));
-    return Column(
-      children: rows
-          .map((r) => Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Row(children: [
-                  SizedBox(width: 150, child: Text(r.label, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13))),
-                  Expanded(
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(4),
-                      child: LinearProgressIndicator(
-                        value: maxV > 0 ? r.value / maxV : 0,
-                        minHeight: 14,
-                        backgroundColor: color.withValues(alpha: 0.08),
-                        valueColor: AlwaysStoppedAnimation(color),
+    return LayoutBuilder(builder: (context, c) {
+      // phones (~360px): narrower label/value columns so the bar keeps some room
+      final narrow = c.maxWidth < 440;
+      final labelW = narrow ? 104.0 : 150.0;
+      final valueW = narrow ? 84.0 : 120.0;
+      return Column(
+        children: rows
+            .map((r) => Padding(
+                  padding: const EdgeInsets.symmetric(vertical: Gap.xs),
+                  child: Row(children: [
+                    SizedBox(
+                        width: labelW,
+                        child: Text(r.label, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13))),
+                    Expanded(
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: LinearProgressIndicator(
+                          value: maxV > 0 ? r.value / maxV : 0,
+                          minHeight: 12,
+                          backgroundColor: color.withValues(alpha: 0.08),
+                          valueColor: AlwaysStoppedAnimation(color),
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  SizedBox(
-                      width: 120,
-                      child: Text(r.trailing ?? compactIqd(r.value),
-                          textAlign: TextAlign.end, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold))),
-                ]),
-              ))
-          .toList(),
-    );
+                    const SizedBox(width: Gap.sm),
+                    SizedBox(
+                        width: valueW,
+                        child: Text(r.trailing ?? compactIqd(r.value),
+                            textAlign: TextAlign.end,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                fontSize: 12, fontWeight: FontWeight.bold, fontFeatures: [FontFeature.tabularFigures()]))),
+                  ]),
+                ))
+            .toList(),
+      );
+    });
   }
 }
 
@@ -472,23 +494,58 @@ class KpiCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // same look as AppCard: white, thin border; muted label on top, bold value below, small tinted icon.
+    // On phones (~360px) two standard tiles sit side by side instead of one tile per row with a gap.
+    return LayoutBuilder(builder: (context, c) {
+      var w = width;
+      if (c.hasBoundedWidth) {
+        if (width <= 260 && c.maxWidth < 2 * width + Gap.sm && c.maxWidth < 560) {
+          w = ((c.maxWidth - Gap.sm) / 2).floorToDouble();
+        }
+        if (w > c.maxWidth) w = c.maxWidth;
+      }
+      return _tile(w, compact: w < 200);
+    });
+  }
+
+  Widget _tile(double width, {bool compact = false}) {
+    final badge = Container(
+      width: compact ? 28 : 36,
+      height: compact ? 28 : 36,
+      decoration: BoxDecoration(color: color.withValues(alpha: 0.10), borderRadius: BorderRadius.circular(Gap.radiusSm)),
+      child: Icon(icon, color: color, size: compact ? 16 : 20),
+    );
     return SizedBox(
       width: width,
-      child: Card(
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(children: [
-            CircleAvatar(backgroundColor: color.withValues(alpha: 0.14), child: Icon(icon, color: color)),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
-                Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                if (sub != null) Text(sub!, style: TextStyle(fontSize: 11, color: color)),
-              ]),
-            ),
-          ]),
-        ),
+      child: AppCard(
+        padding: const EdgeInsets.all(Gap.md),
+        child: Flex(
+          direction: compact ? Axis.vertical : Axis.horizontal,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+          badge,
+          SizedBox(width: compact ? 0 : Gap.md, height: compact ? Gap.sm : 0),
+          Flexible(
+            fit: compact ? FlexFit.loose : FlexFit.tight,
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(label, style: const TextStyle(fontSize: 12, color: AppColors.muted), maxLines: 2, overflow: TextOverflow.ellipsis),
+              const SizedBox(height: 2),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: AlignmentDirectional.centerStart,
+                child: Text(value,
+                    maxLines: 1,
+                    style: const TextStyle(
+                        fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.ink, fontFeatures: [FontFeature.tabularFigures()])),
+              ),
+              if (sub != null) ...[
+                const SizedBox(height: 2),
+                Text(sub!, style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.w600)),
+              ],
+            ]),
+          ),
+        ]),
       ),
     );
   }

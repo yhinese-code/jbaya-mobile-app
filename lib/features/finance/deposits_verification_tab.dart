@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/format.dart';
+import '../../core/theme.dart';
 import '../shared/photo_dialog.dart';
 
 /// Finance checks each supervisor deposit against the bank statement: verify, or reject
@@ -64,14 +65,14 @@ class _DepositsVerificationTabState extends State<DepositsVerificationTab> {
     Future.delayed(const Duration(milliseconds: 400), noteController.dispose); // after the dialog's exit animation
     if (ok != true || !mounted) return;
     if (note.length < 3) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('يجب كتابة ملاحظة'), backgroundColor: Colors.red));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('يجب كتابة ملاحظة'), backgroundColor: AppColors.bad));
       return;
     }
     try {
       await ApiClient.instance.post('/finance/deposits/${d['id']}/decision', {'action': action, 'note': note});
       if (mounted) _load();
     } on ApiException catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message), backgroundColor: Colors.red));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message), backgroundColor: AppColors.bad));
     }
   }
 
@@ -113,8 +114,15 @@ class _DepositsVerificationTabState extends State<DepositsVerificationTab> {
 
   Widget _list() {
     if (_loading) return const Center(child: CircularProgressIndicator());
-    if (_error != null) return Center(child: Text(_error!, style: const TextStyle(color: Colors.red)));
-    if (_items.isEmpty) return const Center(child: Text('لا توجد إيداعات'));
+    if (_error != null) {
+      return EmptyState(
+        icon: Icons.cloud_off,
+        title: 'تعذر تحميل البيانات',
+        message: _error,
+        action: OutlinedButton.icon(onPressed: _load, icon: const Icon(Icons.refresh), label: const Text('إعادة المحاولة')),
+      );
+    }
+    if (_items.isEmpty) return const EmptyState(icon: Icons.account_balance_outlined, title: 'لا توجد إيداعات بهذه الحالة');
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView.builder(
@@ -125,10 +133,9 @@ class _DepositsVerificationTabState extends State<DepositsVerificationTab> {
           final diff = asNum(d['difference']) ?? 0;
           final collectorDiff = asNum(d['collector_differences']) ?? 0;
           final t = DateTime.tryParse((d['created_at'] ?? '').toString())?.toLocal();
-          return Card(
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Column(
+          return AppCard(
+            padding: const EdgeInsets.all(Gap.md),
+            child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
@@ -144,13 +151,14 @@ class _DepositsVerificationTabState extends State<DepositsVerificationTab> {
                   Text('النقد المستلم من الجباة: ${formatIqd(asNum(d['expected_amount']))} (${d['reconciliations']} مطابقة)'),
                   if (diff != 0)
                     Text('فرق الإيداع عن النقد المستلم: ${formatIqd(diff)}',
-                        style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+                        style: const TextStyle(color: AppColors.bad, fontWeight: FontWeight.bold)),
                   if (collectorDiff != 0)
-                    Text('فروقات الجباة ضمن هذا الإيداع: ${formatIqd(collectorDiff)}', style: const TextStyle(color: Colors.orange)),
-                  if (d['finance_note'] != null) Text('ملاحظة المالية: ${d['finance_note']}', style: const TextStyle(color: Colors.grey)),
+                    Text('فروقات الجباة ضمن هذا الإيداع: ${formatIqd(collectorDiff)}', style: const TextStyle(color: AppColors.warn)),
+                  if (d['finance_note'] != null) Text('ملاحظة المالية: ${d['finance_note']}', style: const TextStyle(color: AppColors.muted)),
                   const SizedBox(height: 8),
                   Wrap(
-                    spacing: 8,
+                    spacing: Gap.sm,
+                    runSpacing: Gap.sm,
                     children: [
                       OutlinedButton.icon(
                         onPressed: () => showEvidencePhoto(context, '/finance/deposits/${d['id']}/slip', title: 'وصل الإيداع ${d['slip_number']}'),
@@ -160,12 +168,12 @@ class _DepositsVerificationTabState extends State<DepositsVerificationTab> {
                       if (d['status'] == 'pending') ...[
                         ElevatedButton(
                           onPressed: () => _decide(d, 'verify'),
-                          style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
+                          style: ElevatedButton.styleFrom(backgroundColor: AppColors.good, foregroundColor: Colors.white),
                           child: const Text('مطابق لكشف المصرف'),
                         ),
                         OutlinedButton(
                           onPressed: () => _decide(d, 'reject'),
-                          style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
+                          style: OutlinedButton.styleFrom(foregroundColor: AppColors.bad),
                           child: const Text('رفض'),
                         ),
                       ],
@@ -173,7 +181,6 @@ class _DepositsVerificationTabState extends State<DepositsVerificationTab> {
                   ),
                 ],
               ),
-            ),
           );
         },
       ),

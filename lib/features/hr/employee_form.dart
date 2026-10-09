@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/format.dart';
+import '../../core/theme.dart';
 import '../shared/ui.dart';
 
 /// Create (existing == null) or edit an employee's HR file.
@@ -152,13 +153,12 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(_isNew ? 'موظف جديد' : 'تعديل ملف ${widget.existing!['employee_code']}'),
-        backgroundColor: const Color(0xFF6A1B9A),
-        foregroundColor: Colors.white,
+      appBar: portalAppBar(
+        title: _isNew ? 'موظف جديد' : 'تعديل ملف ${widget.existing!['employee_code']}',
+        color: AppColors.hr,
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(Gap.lg),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -227,17 +227,16 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
               const SectionTitle('ملاحظات الموارد البشرية'),
               SizedBox(width: 612, child: _field('hr_notes', 'ملاحظات داخلية', lines: 3)),
             ],
-            if (_error != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(_error!, style: const TextStyle(color: Colors.red))),
-            const SizedBox(height: 20),
+            if (_error != null) ...[
+              const SizedBox(height: Gap.md),
+              NoticeBanner(tone: Tone.bad, title: _error!),
+            ],
+            const SizedBox(height: Gap.lg),
             ElevatedButton.icon(
               onPressed: _saving ? null : _save,
               icon: const Icon(Icons.save),
               label: Text(_isNew ? 'إنشاء الموظف' : 'حفظ التعديلات'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF6A1B9A),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-              ),
+              style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16)),
             ),
           ],
         ),

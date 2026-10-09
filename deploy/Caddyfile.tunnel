@@ -1,0 +1,24 @@
+# Use this file INSTEAD of Caddyfile when the server is published through a Cloudflare Tunnel (no public IP):
+#   cp Caddyfile.tunnel Caddyfile && sudo docker compose --profile tunnel up -d
+# Cloudflare provides HTTPS; Caddy serves plain http inside the server and passes on the citizen's/employee's real IP.
+{
+	servers {
+		trusted_proxies static private_ranges
+		client_ip_headers CF-Connecting-IP X-Forwarded-For
+	}
+}
+
+http://{$APP_DOMAIN} {
+	encode gzip
+	root * /srv/web
+	try_files {path} /index.html
+	file_server
+}
+
+http://{$API_DOMAIN} {
+	encode gzip
+	request_body {
+		max_size 40MB
+	}
+	reverse_proxy api:8000
+}

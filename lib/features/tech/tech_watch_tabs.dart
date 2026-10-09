@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/format.dart';
+import '../../core/theme.dart';
 import '../shared/ui.dart';
 import 'tech_common.dart';
 
@@ -10,15 +11,17 @@ import 'tech_common.dart';
 Color _waStatusColor(String s) {
   switch (s) {
     case 'sent':
-      return Colors.green.shade700;
+      return AppColors.good;
     case 'failed':
-      return Colors.red.shade700;
+      return AppColors.bad;
+    case 'free':
+      return AppColors.info;
     default:
-      return Colors.blueGrey;
+      return AppColors.muted;
   }
 }
 
-const Map<String, String> _waStatusLabels = {'sent': 'أُرسلت', 'failed': 'فشلت', 'console': 'تجريبي'};
+const Map<String, String> _waStatusLabels = {'sent': 'أُرسلت', 'failed': 'فشلت', 'console': 'تجريبي', 'free': 'مجانية'};
 
 /// WhatsApp gateway: mode, approved templates, monthly volume and cost, and the last 100 messages.
 class TechWhatsAppTab extends StatelessWidget {
@@ -38,65 +41,67 @@ class TechWhatsAppTab extends StatelessWidget {
         return RefreshIndicator(
           onRefresh: reload,
           child: ListView(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(Gap.md),
             children: [
               Card(
                 child: Column(children: [
                   ListTile(
-                    leading: Icon(Icons.chat, color: live ? Colors.green : Colors.orange),
+                    leading: Icon(Icons.chat, color: live ? AppColors.good : AppColors.warn),
                     title: const Text('وضع الإرسال'),
                     subtitle: Text(live ? 'إرسال فعلي' : 'تجريبي (لا يُرسل، تُطبع الرسائل في الخادم)'),
                   ),
                   ListTile(
-                    leading: Icon(configured ? Icons.link : Icons.link_off, color: configured ? Colors.green : Colors.red),
+                    leading: Icon(configured ? Icons.link : Icons.link_off, color: configured ? AppColors.good : AppColors.bad),
                     title: const Text('الربط بحساب ميتا'),
                     subtitle: Text(configured ? 'مربوط (يوجد رمز الوصول ورقم الإرسال)' : 'غير مربوط: لا يوجد رمز وصول أو رقم إرسال'),
                   ),
                   ListTile(
-                    leading: const Icon(Icons.attach_money, color: Colors.indigo),
+                    leading: const Icon(Icons.attach_money, color: AppColors.brand),
                     title: const Text('كلفة الرسالة'),
-                    subtitle: Text('${txt(d['cost_per_message_usd'])} دولار'),
+                    subtitle: Text('${txt(d['cost_per_message_usd'])} دولار للرسالة المدفوعة'),
+                  ),
+                  const ListTile(
+                    leading: Icon(Icons.money_off, color: AppColors.good),
+                    title: Text('الرسائل المجانية'),
+                    subtitle: Text('بلا كلفة: ردود على رسالة المواطن خلال نافذة الـ24 ساعة لا تُحتسب في الكلفة'),
                   ),
                 ]),
               ),
               if (live && !configured)
-                Card(
-                  color: Colors.red.withValues(alpha: 0.08),
-                  child: const ListTile(
-                    leading: Icon(Icons.warning, color: Colors.red),
-                    title: Text('الوضع «إرسال فعلي» لكن الحساب غير مربوط، ستفشل الرسائل'),
-                  ),
+                const NoticeBanner(
+                  tone: Tone.bad,
+                  title: 'الوضع «إرسال فعلي» لكن الحساب غير مربوط',
+                  message: 'ستفشل الرسائل حتى يُضاف رمز الوصول ورقم الإرسال.',
                 ),
+              if (!live) _SimulateInboundCard(onDone: reload),
               const SectionTitle('القوالب المعتمدة'),
               const Text(
                 'هذا هو النص المعتمد من ميتا حرفياً. تغيير الصياغة يحتاج قالباً جديداً تعتمده ميتا أولاً، '
                 'ثم تغيير اسم القالب من تبويب الإعدادات (مجموعة واتساب).',
-                style: TextStyle(color: Colors.grey, fontSize: 13),
+                style: TextStyle(color: AppColors.muted, fontSize: 13),
               ),
               const SizedBox(height: 6),
               for (final t in templates)
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                AppCard(
+                  padding: const EdgeInsets.all(Gap.md),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Wrap(spacing: 8, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
                         SelectableText(txt(t['name']), style: const TextStyle(fontWeight: FontWeight.bold)),
                         StatusChip(txt(t['category']), kTechColor),
-                        Text('(${txt(t['key'])})', style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                        Text('(${txt(t['key'])})', style: const TextStyle(color: AppColors.muted, fontSize: 12)),
                       ]),
                       const SizedBox(height: 8),
                       Container(
                         width: double.infinity,
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
-                          color: Colors.grey.withValues(alpha: 0.1),
+                          color: AppColors.muted.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.grey.withValues(alpha: 0.3)),
+                          border: Border.all(color: AppColors.muted.withValues(alpha: 0.3)),
                         ),
                         child: SelectableText(txt(t['text'])),
                       ),
                     ]),
-                  ),
                 ),
               const SectionTitle('الحجم الشهري والكلفة'),
               if (months.isEmpty)
@@ -106,12 +111,16 @@ class TechWhatsAppTab extends StatelessWidget {
                   child: SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     child: DataTable(
+                      headingRowColor: WidgetStateProperty.all(AppColors.paper),
+                      headingTextStyle: const TextStyle(fontFamily: AppTheme.fontFamily, fontWeight: FontWeight.w600, color: AppColors.muted, fontSize: 13),
+                      dataTextStyle: const TextStyle(fontFamily: AppTheme.fontFamily, color: AppColors.ink, fontSize: 13, fontFeatures: [FontFeature.tabularFigures()]),
                       columnSpacing: 20,
                       columns: const [
                         DataColumn(label: Text('الشهر')),
                         DataColumn(label: Text('أُرسلت'), numeric: true),
                         DataColumn(label: Text('فشلت'), numeric: true),
                         DataColumn(label: Text('تجريبي'), numeric: true),
+                        DataColumn(label: Text('مجانية'), numeric: true),
                         DataColumn(label: Text('الكلفة \$'), numeric: true),
                       ],
                       rows: [
@@ -120,20 +129,26 @@ class TechWhatsAppTab extends StatelessWidget {
                             DataCell(Text(txt(m['month']))),
                             DataCell(Text(formatNumber(asNum(m['sent'])))),
                             DataCell(Text(formatNumber(asNum(m['failed'])),
-                                style: TextStyle(color: toInt(m['failed']) > 0 ? Colors.red : null))),
+                                style: TextStyle(color: toInt(m['failed']) > 0 ? AppColors.bad : null))),
                             DataCell(Text(formatNumber(asNum(m['console'])))),
+                            DataCell(Text(formatNumber(asNum(m['free'])), style: const TextStyle(color: AppColors.good))),
                             DataCell(Text(txt(m['cost_usd']))),
                           ]),
                       ],
                     ),
                   ),
                 ),
+              if (months.isNotEmpty)
+                const Padding(
+                  padding: EdgeInsets.only(top: Gap.xs),
+                  child: Text('الكلفة تُحسب على الرسائل المُرسلة المدفوعة فقط؛ الرسائل المجانية بلا كلفة.',
+                      style: TextStyle(color: AppColors.muted, fontSize: 12)),
+                ),
               SectionTitle('آخر الرسائل (${log.length})'),
               if (log.isEmpty) const EmptyNote('لا توجد رسائل'),
               for (final m in log)
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                AppCard(
+                    padding: const EdgeInsets.symmetric(horizontal: Gap.md, vertical: Gap.sm),
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Row(children: [
                         Expanded(
@@ -143,16 +158,126 @@ class TechWhatsAppTab extends StatelessWidget {
                         const SizedBox(width: 6),
                         StatusChip(_waStatusLabels[m['status']] ?? txt(m['status']), _waStatusColor(txt(m['status'], ''))),
                       ]),
-                      Text(shortTs(m['created_at']), style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                      Text(shortTs(m['created_at']), style: const TextStyle(color: AppColors.muted, fontSize: 12)),
                       if (m['error'] != null)
-                        Text(txt(m['error']), style: TextStyle(color: Colors.red.shade700, fontSize: 12)),
+                        Text(txt(m['error']), style: const TextStyle(color: AppColors.bad, fontSize: 12)),
                     ]),
-                  ),
                 ),
             ],
           ),
         );
       },
+    );
+  }
+}
+
+/// TESTING ONLY (console mode): pretend a citizen sent a WhatsApp message, then show what the system did with it.
+class _SimulateInboundCard extends StatefulWidget {
+  final Future<void> Function() onDone;
+  const _SimulateInboundCard({required this.onDone});
+
+  @override
+  State<_SimulateInboundCard> createState() => _SimulateInboundCardState();
+}
+
+class _SimulateInboundCardState extends State<_SimulateInboundCard> {
+  final _phone = TextEditingController();
+  final _text = TextEditingController();
+  bool _busy = false;
+  List<dynamic>? _handled;
+  bool _duplicate = false;
+
+  @override
+  void dispose() {
+    _phone.dispose();
+    _text.dispose();
+    super.dispose();
+  }
+
+  Future<void> _send() async {
+    final phone = latinDigits(_phone.text);
+    if (phone.isEmpty) {
+      showSnack(context, 'أدخل رقم الهاتف', error: true);
+      return;
+    }
+    setState(() => _busy = true);
+    final r = await runApi(context, () => ApiClient.instance.post('/whatsapp/simulate-inbound', {'phone': phone, 'text': _text.text.trim()}));
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      if (r is Map) {
+        _duplicate = r['duplicate'] == true;
+        _handled = (r['handled'] as List?) ?? const [];
+      }
+    });
+    if (r != null) await widget.onDone();
+  }
+
+  String _describe(dynamic h) {
+    if (h is Map) {
+      if (h['activated'] != null) return 'فُعّل العقار ${h['activated']}';
+      if (h['error'] != null) return 'طلب الانتظار #${txt(h['wait'])}: ${txt(h['error'])}';
+      if (h['wait'] != null) return 'عولج طلب الانتظار #${txt(h['wait'])}${h['property_code'] != null ? ' للعقار ${h['property_code']}' : ''}';
+      return compactJson(h);
+    }
+    return txt(h);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AppCard(
+      accent: AppColors.info,
+      padding: const EdgeInsets.all(Gap.md),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        const Row(children: [
+          Icon(Icons.science_outlined, color: AppColors.info),
+          SizedBox(width: Gap.sm),
+          Expanded(child: Text('محاكاة رسالة مواطن (للتجربة)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15))),
+        ]),
+        const SizedBox(height: Gap.xs),
+        const Text('متاحة في الوضع التجريبي فقط: تُعامل الرسالة كأنها وصلت من المواطن عبر واتساب.',
+            style: TextStyle(color: AppColors.muted, fontSize: 12)),
+        const SizedBox(height: Gap.md),
+        TextField(
+          controller: _phone,
+          keyboardType: TextInputType.phone,
+          textDirection: TextDirection.ltr,
+          decoration: const InputDecoration(labelText: 'رقم هاتف المواطن', hintText: '07XXXXXXXXX', isDense: true),
+        ),
+        const SizedBox(height: Gap.sm),
+        TextField(
+          controller: _text,
+          maxLength: 500,
+          maxLines: 2,
+          decoration: const InputDecoration(labelText: 'نص الرسالة', isDense: true),
+        ),
+        Align(
+          alignment: AlignmentDirectional.centerStart,
+          child: ElevatedButton.icon(
+            onPressed: _busy ? null : _send,
+            icon: _busy
+                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                : const Icon(Icons.send),
+            label: const Text('إرسال المحاكاة'),
+          ),
+        ),
+        if (_handled != null) ...[
+          const SizedBox(height: Gap.md),
+          const Text('ما فعله النظام', style: TextStyle(fontWeight: FontWeight.w600)),
+          const SizedBox(height: Gap.xs),
+          if (_duplicate)
+            const Text('رسالة مكررة؛ لم يُعالج شيء.', style: TextStyle(color: AppColors.muted))
+          else if (_handled!.isEmpty)
+            const Text('لا شيء: لا توجد طلبات انتظار أو عقارات مرتبطة بهذا الرقم.', style: TextStyle(color: AppColors.muted))
+          else
+            for (final h in _handled!)
+              InfoLine(
+                h is Map && h['error'] != null ? Icons.error_outline : Icons.check_circle_outline,
+                _describe(h),
+                color: h is Map && h['error'] != null ? AppColors.bad : AppColors.good,
+              ),
+        ],
+      ]),
     );
   }
 }
@@ -185,7 +310,7 @@ class _TechFraudTabState extends State<TechFraudTab> {
   Widget build(BuildContext context) {
     return Column(children: [
       Padding(
-        padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+        padding: const EdgeInsets.fromLTRB(Gap.md, Gap.md, Gap.md, Gap.xs),
         child: SegmentedButton<int>(
           showSelectedIcon: false,
           segments: const [
@@ -208,40 +333,36 @@ class _TechFraudTabState extends State<TechFraudTab> {
             return RefreshIndicator(
               onRefresh: reload,
               child: ListView(
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.all(Gap.md),
                 children: [
                   SectionTitle('أرقام مواطنين على منازل كثيرة (${numbers.length})'),
                   if (numbers.isEmpty) const EmptyNote('لا توجد أرقام مشبوهة'),
                   for (final n in numbers)
-                    Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    AppCard(
+                      padding: const EdgeInsets.all(Gap.md),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           Text(txt(n['phone']), textDirection: TextDirection.ltr, style: const TextStyle(fontWeight: FontWeight.bold)),
                           InfoLine(
                             Icons.home_work,
                             'منازل: ${toInt(n['houses'])}  •  جباة: ${toInt(n['collectors'])}  •  قواطع: ${toInt(n['sectors'])}',
-                            color: toInt(n['sectors']) > 1 ? Colors.red.shade700 : null,
+                            color: toInt(n['sectors']) > 1 ? AppColors.bad : null,
                           ),
                           InfoLine(Icons.person, 'سجّلها: ${txt(n['registered_by'])}'),
                         ]),
-                      ),
                     ),
                   SectionTitle('أشخاص بأحداث مشبوهة (${people.length})'),
                   if (people.isEmpty) const EmptyNote('لا توجد أحداث في هذه المدة'),
                   for (final p in people)
-                    Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    AppCard(
+                      padding: const EdgeInsets.all(Gap.md),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           Text('${txt(p['employee_code'])} - ${txt(p['full_name'])}', style: const TextStyle(fontWeight: FontWeight.bold)),
                           const SizedBox(height: 6),
                           Wrap(spacing: 6, runSpacing: 4, children: [
                             for (final e in _eventLabels.entries)
-                              if (toInt(p[e.key]) > 0) StatusChip('${e.value}: ${toInt(p[e.key])}', Colors.deepOrange),
+                              if (toInt(p[e.key]) > 0) StatusChip('${e.value}: ${toInt(p[e.key])}', AppColors.warn),
                           ]),
                         ]),
-                      ),
                     ),
                   SectionTitle('مشاكل الاتصال العشوائي (${callbacks.length})'),
                   if (callbacks.isEmpty) const EmptyNote('لا توجد مشاكل'),
@@ -253,7 +374,7 @@ class _TechFraudTabState extends State<TechFraudTab> {
                             dense: true,
                             leading: Icon(
                               c['status'] == 'denied' ? Icons.phone_disabled : Icons.money_off,
-                              color: Colors.red.shade700,
+                              color: AppColors.bad,
                             ),
                             title: Text('${txt(c['employee_code'])}: ${_callbackLabels[c['status']] ?? txt(c['status'])}'),
                             trailing: Text('${toInt(c['n'])}', style: const TextStyle(fontWeight: FontWeight.bold)),
@@ -309,7 +430,7 @@ class _TechAuditTabState extends State<TechAuditTab> {
     await showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        icon: Icon(valid ? Icons.verified : Icons.dangerous, color: valid ? Colors.green : Colors.red, size: 40),
+        icon: Icon(valid ? Icons.verified : Icons.dangerous, color: valid ? AppColors.good : AppColors.bad, size: 40),
         title: Text(valid ? 'السجل سليم' : 'تم اكتشاف تعديل في السجل'),
         content: Text(valid
             ? 'فُحص ${toInt(r['checked'])} سجلاً مترابطاً ولم يُعدَّل أي منها.'
@@ -324,7 +445,7 @@ class _TechAuditTabState extends State<TechAuditTab> {
     final path = '/tech/audit${buildQuery({'actor': _actor, 'action': _action, 'limit': '200'})}';
     return Column(children: [
       Padding(
-        padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+        padding: const EdgeInsets.fromLTRB(Gap.md, Gap.md, Gap.md, Gap.xs),
         child: Row(children: [
           Expanded(
             child: TextField(
@@ -367,7 +488,7 @@ class _TechAuditTabState extends State<TechAuditTab> {
               child: rows.isEmpty
                   ? ListView(children: const [EmptyNote('لا توجد سجلات مطابقة')])
                   : ListView.builder(
-                      padding: const EdgeInsets.all(12),
+                      padding: const EdgeInsets.all(Gap.md),
                       itemCount: rows.length,
                       itemBuilder: (context, i) => _auditRow(rows[i]),
                     ),
@@ -394,14 +515,14 @@ class _TechAuditTabState extends State<TechAuditTab> {
         children: [
           Container(
             padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(color: Colors.grey.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6)),
+            decoration: BoxDecoration(color: AppColors.muted.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6)),
             child: SelectableText(
               prettyJson(r['details']),
               textDirection: TextDirection.ltr,
               style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
             ),
           ),
-          Text('رقم السجل: ${txt(r['id'])}', style: const TextStyle(color: Colors.grey, fontSize: 11)),
+          Text('رقم السجل: ${txt(r['id'])}', style: const TextStyle(color: AppColors.muted, fontSize: 11)),
         ],
       ),
     );

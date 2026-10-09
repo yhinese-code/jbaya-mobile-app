@@ -369,6 +369,10 @@ class SettingIn(BaseModel):
 def set_setting(key: str, body: SettingIn, user: dict = Depends(tech_only)):
     if key == "UI_PERMISSIONS":
         raise HTTPException(422, "استخدم مصفوفة الصلاحيات")
+    if key == "WHATSAPP_MODE" and body.value == "live" and not (settings.WHATSAPP_APP_SECRET and settings.WHATSAPP_TOKEN
+                                                                 and settings.WHATSAPP_PHONE_NUMBER_ID):
+        raise HTTPException(422, "لا يمكن تفعيل الإرسال الفعلي قبل إدخال WHATSAPP_TOKEN و WHATSAPP_PHONE_NUMBER_ID "
+                                 "و WHATSAPP_APP_SECRET في ملف .env على الخادم")
     with get_conn() as conn, dict_cursor(conn) as cur:
         return runtime.set_value(cur, key, body.value, user, body.note)
 
@@ -569,7 +573,8 @@ def whatsapp_panel(days: int = Query(30, ge=1, le=365), user: dict = Depends(tec
         )
         stats = cur.fetchall()
         cur.execute("""SELECT date_trunc('month', created_at) AS m, COUNT(*) FILTER (WHERE status = 'sent') AS sent,
-                              COUNT(*) FILTER (WHERE status = 'failed') AS failed, COUNT(*) FILTER (WHERE status = 'console') AS console
+                              COUNT(*) FILTER (WHERE status = 'failed') AS failed, COUNT(*) FILTER (WHERE status = 'console') AS console,
+                              COUNT(*) FILTER (WHERE status = 'free') AS free
                        FROM whatsapp_messages GROUP BY 1 ORDER BY 1 DESC LIMIT 12""")
         months = cur.fetchall()
         cur.execute("""SELECT id, phone, template, status, preview, error, created_at FROM whatsapp_messages
@@ -583,7 +588,7 @@ def whatsapp_panel(days: int = Query(30, ge=1, le=365), user: dict = Depends(tec
         "templates": [{"key": k, "name": names[k], "category": whatsapp.TEMPLATE_KIND[k], "text": whatsapp.TEMPLATE_TEXT[k]}
                       for k in names],
         "stats": stats,
-        "months": [{"month": r["m"].date().isoformat()[:7], "sent": r["sent"], "failed": r["failed"], "console": r["console"],
+        "months": [{"month": r["m"].date().isoformat()[:7], "sent": r["sent"], "failed": r["failed"], "console": r["console"], "free": r["free"],
                     "cost_usd": round(r["sent"] * cost, 2)} for r in months],
         "log": [{**r, "phone": r["phone"][:5] + "****" + r["phone"][-3:], "created_at": _iso(r["created_at"])} for r in log],
     }

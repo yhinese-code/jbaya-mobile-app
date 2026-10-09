@@ -125,6 +125,16 @@ class Settings:
 
     WHATSAPP_COST_USD = _float("WHATSAPP_COST_USD", 0.0079)    # per message, for the cost counter
 
+    # --- Phase 6: the citizen messages us first (free 24-hour window), then we send the code and receipt ---
+    CITIZEN_FIRST_MESSAGE = _str("CITIZEN_FIRST_MESSAGE", "true").lower() == "true"
+    CITIZEN_WAIT_MINUTES = _int("CITIZEN_WAIT_MINUTES", 15)     # how long we wait for the citizen's message
+    WHATSAPP_BUSINESS_NUMBER = _str("WHATSAPP_BUSINESS_NUMBER", "9647700000000")   # the number citizens message
+    WHATSAPP_VERIFY_TOKEN = os.getenv("WHATSAPP_VERIFY_TOKEN", "")    # set the same text in Meta's webhook settings
+    WHATSAPP_APP_SECRET = os.getenv("WHATSAPP_APP_SECRET", "")        # Meta app secret: checks webhook signatures
+    WEBHOOK_ALLOW_UNSIGNED = _str("WEBHOOK_ALLOW_UNSIGNED", "false").lower() == "true"   # developer laptops only
+    WINDOW_SAFETY_MINUTES = _int("WINDOW_SAFETY_MINUTES", 15)   # treat the 24h window as closing this much earlier
+    OFFLINE_MAX_HOURS = _int("OFFLINE_MAX_HOURS", 72)            # offline work synced later than this is flagged
+
     # --- WhatsApp Business (Meta Cloud API) ---
     # console = print messages in the server terminal (development)
     # live    = send through Meta Cloud API

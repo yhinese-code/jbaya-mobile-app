@@ -46,6 +46,9 @@ dependencies:
   geolocator: 14.0.2   # 14.0.3+ conflicts with file_picker 10.x (win32)
   shared_preferences: ^2.5.3
   file_picker: ^10.3.2
+  qr_flutter: ^4.1.0
+  path_provider: ^2.1.5
+  connectivity_plus: ^6.1.4
 
 dev_dependencies:
   flutter_test:
@@ -68,6 +71,18 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+  # Arabic UI font (IBM Plex Sans Arabic, SIL Open Font License: assets/fonts/OFL.txt). Bundled, so it works offline.
+  fonts:
+    - family: IBMPlexSansArabic
+      fonts:
+        - asset: assets/fonts/IBMPlexSansArabic-Regular.ttf
+        - asset: assets/fonts/IBMPlexSansArabic-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/IBMPlexSansArabic-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/IBMPlexSansArabic-Bold.ttf
+          weight: 700
 
   # To add assets to your application, add an assets section, like this:
   # assets:

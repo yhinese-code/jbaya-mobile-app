@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/format.dart';
+import '../../core/theme.dart';
 
 /// Today's receipts + any receipt not yet handed over to the supervisor.
 class ReceiptsScreen extends StatefulWidget {
@@ -41,35 +42,66 @@ class ReceiptsScreenState extends State<ReceiptsScreen> {
   @override
   Widget build(BuildContext context) {
     if (_loading) return const Center(child: CircularProgressIndicator());
-    if (_error != null) return Center(child: Text(_error!, style: const TextStyle(color: Colors.red)));
-    if (_items.isEmpty) return const Center(child: Text('لا توجد وصولات اليوم'));
+    if (_error != null) {
+      return EmptyState(
+        icon: Icons.cloud_off,
+        title: 'تعذر تحميل الوصولات',
+        message: _error,
+        action: OutlinedButton.icon(onPressed: reload, icon: const Icon(Icons.refresh), label: const Text('إعادة المحاولة')),
+      );
+    }
+    if (_items.isEmpty) {
+      return RefreshIndicator(
+        onRefresh: reload,
+        child: ListView(children: const [
+          SizedBox(height: 60),
+          EmptyState(icon: Icons.receipt_long_outlined, title: 'لا توجد وصولات اليوم'),
+        ]),
+      );
+    }
     final notHanded = _items.where((r) => r['handed_over'] != true).toList();
     final total = notHanded.fold<double>(0, (sum, r) => sum + (asNum(r['total_amount']) ?? 0));
     return RefreshIndicator(
       onRefresh: reload,
       child: ListView(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.fromLTRB(Gap.md, Gap.md, Gap.md, Gap.xl),
         children: [
-          Card(
-            color: Colors.teal.shade50,
-            child: ListTile(
-              leading: const Icon(Icons.account_balance_wallet, color: Colors.teal),
-              title: Text('بانتظار التسليم للمشرف: ${notHanded.length} وصل'),
-              subtitle: Text('المجموع: ${formatIqd(total)}'),
-            ),
-          ),
-          ..._items.map((r) {
-            final t = DateTime.tryParse((r['issued_at'] ?? '').toString())?.toLocal();
-            final time = t == null ? '' : '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
-            final handed = r['handed_over'] == true;
-            return Card(
-              child: ListTile(
-                leading: Icon(handed ? Icons.check_circle : Icons.receipt_long, color: handed ? Colors.green : Colors.orange),
-                title: Text('${r['receipt_no']} - ${r['citizen_name']}'),
-                subtitle: Text('${r['property_code']} | $time${r['verification_method'] == 'master_code' ? ' | الرمز الرئيسي' : ''}'
-                    '${handed ? ' | سُلّم' : ''}'),
-                trailing: Text(formatIqd(asNum(r['total_amount'])), style: const TextStyle(fontWeight: FontWeight.bold)),
+          AppCard(
+            accent: AppColors.brand,
+            child: Row(children: [
+              const Icon(Icons.account_balance_wallet_outlined, color: AppColors.brand, size: 28),
+              const SizedBox(width: Gap.md),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('بانتظار التسليم للمشرف: ${notHanded.length} وصل', style: const TextStyle(color: AppColors.muted)),
+                  Text(formatIqd(total), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+                ]),
               ),
+            ]),
+          ),
+          const SizedBox(height: Gap.xs),
+          ..._items.map((r) {
+            final handed = r['handed_over'] == true;
+            final master = r['verification_method'] == 'master_code';
+            return AppCard(
+              padding: const EdgeInsets.symmetric(horizontal: Gap.lg, vertical: Gap.md),
+              child: Row(children: [
+                Icon(handed ? Icons.check_circle : Icons.receipt_long_outlined,
+                    color: handed ? AppColors.good : AppColors.warn),
+                const SizedBox(width: Gap.md),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('${r['citizen_name']}', style: const TextStyle(fontWeight: FontWeight.w600)),
+                    Text(
+                      '${r['receipt_no']}  ·  ${r['property_code']}  ·  ${formatTime(r['issued_at'])}'
+                      '${master ? '  ·  الرمز الرئيسي' : ''}${handed ? '  ·  سُلّم' : ''}',
+                      style: const TextStyle(fontSize: 12, color: AppColors.muted),
+                    ),
+                  ]),
+                ),
+                const SizedBox(width: Gap.sm),
+                Text(formatIqd(asNum(r['total_amount'])), style: const TextStyle(fontWeight: FontWeight.w700)),
+              ]),
             );
           }),
         ],

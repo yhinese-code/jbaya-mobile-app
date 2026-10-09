@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/format.dart';
+import '../../core/theme.dart';
 import '../shared/ui.dart';
 import 'charts.dart';
 
@@ -39,7 +40,7 @@ class _FinanceOverviewTabState extends State<FinanceOverviewTab> {
           Text(formatIqd(asNum(value)), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
         ]),
       ),
-      if (arrow) const Padding(padding: EdgeInsets.symmetric(horizontal: 4), child: Icon(Icons.arrow_forward, color: Colors.grey)),
+      if (arrow) const Padding(padding: EdgeInsets.symmetric(horizontal: 4), child: Icon(Icons.arrow_forward, color: AppColors.muted)),
     ]);
   }
 
@@ -60,7 +61,7 @@ class _FinanceOverviewTabState extends State<FinanceOverviewTab> {
         return RefreshIndicator(
           onRefresh: reload,
           child: ListView(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(Gap.md),
             children: [
               Wrap(spacing: 8, runSpacing: 8, children: [
                 KpiCard(
@@ -68,28 +69,28 @@ class _FinanceOverviewTabState extends State<FinanceOverviewTab> {
                   value: formatIqd(asNum(today['total'])),
                   sub: 'أمس ${compactIqd((asNum(y['total']) ?? 0).toDouble())} | ${today['count']} وصل',
                   icon: Icons.today,
-                  color: Colors.teal,
+                  color: AppColors.brand,
                 ),
                 KpiCard(
                   label: 'تحصيل الشهر حتى اليوم',
                   value: formatIqd(asNum(mtd['total'])),
                   sub: _change(k['mtd_change']),
                   icon: Icons.calendar_month,
-                  color: (asNum(k['mtd_change']) ?? 0) >= 0 ? Colors.green : Colors.red,
+                  color: (asNum(k['mtd_change']) ?? 0) >= 0 ? AppColors.good : AppColors.bad,
                 ),
                 KpiCard(
                   label: 'دخل الشركة هذا الشهر',
                   value: formatIqd(asNum(k['company_income_mtd'])),
                   sub: 'أجور الخدمة + حصة الشركة من مبالغ الماء',
                   icon: Icons.account_balance_wallet,
-                  color: Colors.indigo,
+                  color: AppColors.brand,
                 ),
                 KpiCard(
                   label: 'أمانة دائرة الماء هذا الشهر',
                   value: formatIqd(asNum(k['trust_mtd'])),
                   sub: 'ليست دخلاً للشركة',
                   icon: Icons.lock,
-                  color: Colors.deepOrange,
+                  color: AppColors.warn,
                 ),
                 if (profit != null)
                   KpiCard(
@@ -97,45 +98,45 @@ class _FinanceOverviewTabState extends State<FinanceOverviewTab> {
                     value: formatIqd(asNum(profit['profit'])),
                     sub: 'دخل ${compactIqd((asNum(profit['income']) ?? 0).toDouble())} - كلف ${compactIqd((asNum(profit['costs']) ?? 0).toDouble())}',
                     icon: Icons.savings,
-                    color: (asNum(profit['profit']) ?? 0) >= 0 ? Colors.green : Colors.red,
+                    color: (asNum(profit['profit']) ?? 0) >= 0 ? AppColors.good : AppColors.bad,
                   ),
                 KpiCard(
                   label: 'متوسط الوصل',
                   value: formatIqd(asNum(mtd['avg_ticket'])),
                   sub: '${mtd['count']} وصل هذا الشهر',
                   icon: Icons.receipt,
-                  color: Colors.blueGrey,
+                  color: AppColors.muted,
                 ),
                 KpiCard(
                   label: 'تغطية العقارات (30 يوم)',
                   value: pctText(k['coverage_30d']),
                   sub: '${k['active_properties']} عقار فعال${(asNum(k['pending_properties']) ?? 0) > 0 ? ' | ${k['pending_properties']} بانتظار التأكيد' : ''}',
                   icon: Icons.home_work,
-                  color: Colors.brown,
+                  color: AppColors.muted,
                 ),
                 KpiCard(
                   label: 'موثق برمز المواطن',
                   value: pctText(mtd['otp_share']),
                   sub: 'الباقي بالرمز الرئيسي',
                   icon: Icons.verified_user,
-                  color: (asNum(mtd['otp_share']) ?? 1) >= 0.9 ? Colors.green : Colors.orange,
+                  color: (asNum(mtd['otp_share']) ?? 1) >= 0.9 ? AppColors.good : AppColors.warn,
                 ),
                 KpiCard(
                   label: 'فواتير بالتقدير',
                   value: pctText(k['estimate_share_mtd']),
                   sub: 'عليها ملاحظات ${pctText(k['flagged_share_mtd'])}',
                   icon: Icons.speed,
-                  color: Colors.deepOrange,
+                  color: AppColors.warn,
                 ),
               ]),
               const SectionTitle('أين النقد الآن'),
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: Row(children: [
-                  _cashStep('لدى الجباة', cash['with_collectors'], Colors.orange),
-                  _cashStep('لدى المشرفين', cash['with_supervisors'], Colors.amber.shade800),
-                  _cashStep('صندوق المالية', cash['cash_box'], Colors.blue),
-                  _cashStep('المصرف', cash['bank'], Colors.green, arrow: false),
+                  _cashStep('لدى الجباة', cash['with_collectors'], AppColors.warn),
+                  _cashStep('لدى المشرفين', cash['with_supervisors'], AppColors.warn),
+                  _cashStep('صندوق المالية', cash['cash_box'], AppColors.info),
+                  _cashStep('المصرف', cash['bank'], AppColors.good, arrow: false),
                 ]),
               ),
               const SizedBox(height: 8),
@@ -148,8 +149,8 @@ class _FinanceOverviewTabState extends State<FinanceOverviewTab> {
                 Chip(label: Text('نقد لم يصل المقر بعد: ${formatIqd(asNum(cash['outside_hq']))}')),
                 if (suspense != 0)
                   Chip(
-                    backgroundColor: Colors.red.shade50,
-                    avatar: const Icon(Icons.warning, color: Colors.red, size: 18),
+                    backgroundColor: AppColors.bad.withValues(alpha: 0.08),
+                    avatar: const Icon(Icons.warning, color: AppColors.bad, size: 18),
                     label: Text('فروقات معلقة قيد التحقيق: ${formatIqd(suspense)}'),
                   ),
                 if ((asNum(cash['employees_owe']) ?? 0) != 0)
@@ -162,27 +163,24 @@ class _FinanceOverviewTabState extends State<FinanceOverviewTab> {
                   onSelectionChanged: (s) => setState(() => _days = s.first),
                 ),
               ]),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: SimpleLineChart(
+              AppCard(
+                padding: const EdgeInsets.all(Gap.md),
+                child: SimpleLineChart(
                     labels: series.map((s) => shortDay('${s['day']}')).toList(),
                     series: [
-                      LineSeries('المحصل', series.map((s) => (asNum(s['total']) ?? 0).toDouble()).toList(), Colors.teal, fill: true),
-                      LineSeries('دخل الشركة', series.map((s) => (asNum(s['company_income']) ?? 0).toDouble()).toList(), Colors.indigo, width: 1.5),
-                      LineSeries('أمانة الدائرة', series.map((s) => (asNum(s['trust']) ?? 0).toDouble()).toList(), Colors.deepOrange, width: 1.5),
+                      LineSeries('المحصل', series.map((s) => (asNum(s['total']) ?? 0).toDouble()).toList(), AppColors.brand, fill: true),
+                      LineSeries('دخل الشركة', series.map((s) => (asNum(s['company_income']) ?? 0).toDouble()).toList(), ChartColors.secondary, width: 1.5),
+                      LineSeries('أمانة الدائرة', series.map((s) => (asNum(s['trust']) ?? 0).toDouble()).toList(), ChartColors.tertiary, width: 1.5),
                     ],
                   ),
-                ),
               ),
               LayoutBuilder(builder: (context, c) {
-                final sectorCard = Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                final sectorCard = AppCard(
+                  padding: const EdgeInsets.all(Gap.md),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       const Text('القواطع (هذا الشهر)', style: TextStyle(fontWeight: FontWeight.bold)),
                       const SizedBox(height: 8),
-                      if (sectors.isEmpty) const Text('لا بيانات', style: TextStyle(color: Colors.grey)),
+                      if (sectors.isEmpty) const EmptyState(title: 'لا توجد جباية مسجلة هذا الشهر'),
                       HBarList(
                         rows: sectors
                             .map((s) => (
@@ -193,17 +191,15 @@ class _FinanceOverviewTabState extends State<FinanceOverviewTab> {
                             .toList(),
                       ),
                     ]),
-                  ),
                 );
-                final classCard = Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                final classCard = AppCard(
+                  padding: const EdgeInsets.all(Gap.md),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       const Text('حسب فئة العقار (هذا الشهر)', style: TextStyle(fontWeight: FontWeight.bold)),
                       const SizedBox(height: 8),
-                      if (classes.isEmpty) const Text('لا بيانات', style: TextStyle(color: Colors.grey)),
+                      if (classes.isEmpty) const EmptyState(title: 'لا توجد جباية مسجلة هذا الشهر'),
                       HBarList(
-                        color: Colors.indigo,
+                        color: ChartColors.secondary,
                         rows: classes
                             .map((s) => (
                                   label: propertyClassLabels[s['property_class']] ?? '${s['property_class']}',
@@ -213,7 +209,6 @@ class _FinanceOverviewTabState extends State<FinanceOverviewTab> {
                             .toList(),
                       ),
                     ]),
-                  ),
                 );
                 if (c.maxWidth >= 900) {
                   return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(child: sectorCard), Expanded(child: classCard)]);
@@ -221,10 +216,15 @@ class _FinanceOverviewTabState extends State<FinanceOverviewTab> {
                 return Column(children: [sectorCard, classCard]);
               }),
               const SectionTitle('الجباة (هذا الشهر)'),
+              if (cols.isEmpty) const EmptyState(icon: Icons.groups_outlined, title: 'لا توجد جباية للجباة هذا الشهر'),
+              if (cols.isNotEmpty)
               Card(
                 child: SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: DataTable(
+                    headingRowColor: WidgetStateProperty.all(AppColors.paper),
+                    headingTextStyle: const TextStyle(fontFamily: AppTheme.fontFamily, fontWeight: FontWeight.w600, color: AppColors.muted, fontSize: 13),
+                    dataTextStyle: const TextStyle(fontFamily: AppTheme.fontFamily, color: AppColors.ink, fontSize: 13, fontFeatures: [FontFeature.tabularFigures()]),
                     columns: const [
                       DataColumn(label: Text('الجابي')),
                       DataColumn(label: Text('المحصل'), numeric: true),
@@ -239,7 +239,7 @@ class _FinanceOverviewTabState extends State<FinanceOverviewTab> {
                               DataCell(Text('${c['receipts']}')),
                               DataCell(Text(formatIqd(asNum(c['avg_ticket'])))),
                               DataCell(Text('${c['master_uses']}',
-                                  style: TextStyle(color: (asNum(c['master_uses']) ?? 0) > 0 ? Colors.orange : null))),
+                                  style: TextStyle(color: (asNum(c['master_uses']) ?? 0) > 0 ? AppColors.warn : null))),
                             ]))
                         .toList(),
                   ),
@@ -264,7 +264,7 @@ class ForecastTab extends StatelessWidget {
       path: '/finance/forecast?horizon=30',
       builder: (context, d, reload) {
         if (d['available'] != true) {
-          return Center(child: Padding(padding: const EdgeInsets.all(24), child: Text('${d['message']}', textAlign: TextAlign.center)));
+          return EmptyState(icon: Icons.insights, title: 'التنبؤ غير متاح بعد', message: '${d['message']}');
         }
         final hist = (d['history'] as List).cast<Map>();
         final fc = (d['forecast'] as List).cast<Map>();
@@ -284,66 +284,58 @@ class ForecastTab extends StatelessWidget {
         return RefreshIndicator(
           onRefresh: reload,
           child: ListView(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(Gap.md),
             children: [
-              if (d['warning'] != null)
-                Card(
-                  color: Colors.amber.shade50,
-                  child: ListTile(leading: const Icon(Icons.info, color: Colors.orange), title: Text('${d['warning']}')),
-                ),
+              if (d['warning'] != null) NoticeBanner(tone: Tone.warn, title: '${d['warning']}'),
               Wrap(spacing: 8, runSpacing: 8, children: [
                 KpiCard(
                   label: 'المتوقع لنهاية الشهر',
                   value: formatIqd(asNum(month['projected_total'])),
                   sub: 'بين ${compactIqd((asNum(month['projected_low']) ?? 0).toDouble())} و ${compactIqd((asNum(month['projected_high']) ?? 0).toDouble())}',
                   icon: Icons.flag,
-                  color: Colors.indigo,
+                  color: AppColors.brand,
                 ),
-                KpiCard(label: 'المحصل حتى أمس', value: formatIqd(asNum(month['actual_to_yesterday'])), icon: Icons.check_circle, color: Colors.green),
-                KpiCard(label: 'اليوم حتى الآن', value: formatIqd(asNum(d['today_so_far'])), icon: Icons.today, color: Colors.teal),
-                KpiCard(label: 'المتوقع خلال 30 يوماً', value: formatIqd(asNum(d['next_30_days'])), icon: Icons.trending_up, color: Colors.purple),
+                KpiCard(label: 'المحصل حتى أمس', value: formatIqd(asNum(month['actual_to_yesterday'])), icon: Icons.check_circle, color: AppColors.good),
+                KpiCard(label: 'اليوم حتى الآن', value: formatIqd(asNum(d['today_so_far'])), icon: Icons.today, color: AppColors.brand),
+                KpiCard(label: 'المتوقع خلال 30 يوماً', value: formatIqd(asNum(d['next_30_days'])), icon: Icons.trending_up, color: AppColors.info),
                 KpiCard(
                   label: 'دقة النموذج',
                   value: mape == null ? '-' : '${((1 - mape) * 100).clamp(0, 100).toStringAsFixed(0)}%',
                   sub: d['method'] == 'holt_winters' ? 'هولت-وينترز بموسمية أسبوعية | ${d['history_days']} يوم' : 'متوسط بسيط (بيانات قليلة)',
                   icon: Icons.insights,
-                  color: Colors.blueGrey,
+                  color: AppColors.muted,
                 ),
               ]),
               const SectionTitle('الفعلي والمتوقع'),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: SimpleLineChart(
+              AppCard(
+                padding: const EdgeInsets.all(Gap.md),
+                child: SimpleLineChart(
                     height: 280,
                     labels: labels,
                     markerIndex: hist.length < n ? hist.length : null,
-                    band: ChartBand(lower, upper, Colors.indigo.withValues(alpha: 0.12)),
+                    band: ChartBand(lower, upper, ChartColors.secondary.withValues(alpha: 0.12)),
                     series: [
-                      LineSeries('الفعلي', actual, Colors.teal, fill: true),
-                      LineSeries('المتوقع', predicted, Colors.indigo, dashed: true),
+                      LineSeries('الفعلي', actual, AppColors.brand, fill: true),
+                      LineSeries('المتوقع', predicted, ChartColors.secondary, dashed: true),
                     ],
                   ),
-                ),
               ),
               const SectionTitle('متوسط التحصيل حسب يوم الأسبوع'),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: SimpleBarChart(
+              AppCard(
+                padding: const EdgeInsets.all(Gap.md),
+                child: SimpleBarChart(
                     labels: prof.map((p) => '${p['label']}').toList(),
                     values: prof.map((p) => (asNum(p['avg']) ?? 0).toDouble()).toList(),
-                    color: Colors.teal,
+                    color: AppColors.brand,
                     height: 200,
                   ),
-                ),
               ),
               const Padding(
                 padding: EdgeInsets.all(8),
                 child: Text(
                   'النموذج يتعلم الاتجاه العام ونمط أيام الأسبوع (مثل انخفاض الجمعة) من آخر 120 يوماً، ويُعاد احتسابه مع كل فتح للصفحة. '
                   'النطاق المظلل هو المدى المتوقع بثقة 95%.',
-                  style: TextStyle(color: Colors.grey, fontSize: 12),
+                  style: TextStyle(color: AppColors.muted, fontSize: 12),
                 ),
               ),
             ],
@@ -367,24 +359,30 @@ class AgingTab extends StatelessWidget {
         final buckets = (d['buckets'] as List).cast<Map>();
         final sectors = (d['sectors'] as List).cast<Map>();
         final top = (d['top'] as List).cast<Map>();
-        const colors = [Colors.green, Colors.amber, Colors.orange, Colors.deepOrange, Colors.red];
+        // graded from fresh (good) to very old (bad)
+        final colors = [
+          AppColors.good,
+          Color.lerp(AppColors.good, AppColors.warn, 0.6)!,
+          AppColors.warn,
+          Color.lerp(AppColors.warn, AppColors.bad, 0.5)!,
+          AppColors.bad,
+        ];
         return RefreshIndicator(
           onRefresh: reload,
           child: ListView(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(Gap.md),
             children: [
               KpiCard(
                 width: 320,
                 label: 'متأخرات تقديرية (الحصة الحكومية)',
                 value: formatIqd(asNum(d['total_estimated'])),
                 icon: Icons.hourglass_bottom,
-                color: Colors.deepOrange,
+                color: AppColors.warn,
               ),
               const SectionTitle('أعمار المتأخرات (أيام منذ آخر دفعة)'),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(children: [
+              AppCard(
+                padding: const EdgeInsets.all(Gap.md),
+                child: Column(children: [
                     SimpleBarChart(
                       labels: buckets.map((b) => '${b['key']}').toList(),
                       values: buckets.map((b) => (asNum(b['estimated']) ?? 0).toDouble()).toList(),
@@ -397,14 +395,12 @@ class AgingTab extends StatelessWidget {
                         StatusChip('${buckets[i]['label']} (${buckets[i]['key']}): ${buckets[i]['properties']} عقار', colors[i]),
                     ]),
                   ]),
-                ),
               ),
               const SectionTitle('حسب القاطع'),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: HBarList(
-                    color: Colors.deepOrange,
+              AppCard(
+                padding: const EdgeInsets.all(Gap.md),
+                child: HBarList(
+                    color: AppColors.warn,
                     rows: sectors
                         .map((s) => (
                               label: '${s['name']}',
@@ -413,21 +409,25 @@ class AgingTab extends StatelessWidget {
                             ))
                         .toList(),
                   ),
-                ),
               ),
               const SectionTitle('أعلى العقارات متأخرات'),
+              if (top.isEmpty) const EmptyState(icon: Icons.task_alt, title: 'لا توجد عقارات متأخرة'),
               ...top.map((p) => Card(
                     child: ListTile(
                       leading: CircleAvatar(
-                        backgroundColor: (asNum(p['days']) ?? 0) > 90 ? Colors.red.shade100 : Colors.orange.shade100,
-                        child: Text('${p['days']}', style: const TextStyle(fontSize: 12)),
+                        backgroundColor: (asNum(p['days']) ?? 0) > 90 ? AppColors.bad.withValues(alpha: 0.12) : AppColors.warn.withValues(alpha: 0.12),
+                        child: Text('${p['days']}',
+                            style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: (asNum(p['days']) ?? 0) > 90 ? AppColors.bad : AppColors.warn)),
                       ),
                       title: Text('${p['property_code']} - ${p['citizen']}'),
                       subtitle: Text('${p['sector']} | ${p['address']} | ${p['never_paid'] == true ? 'لم يدفع منذ التسجيل' : 'آخر دفعة ${formatDate(p['last_paid'])}'}'),
                       trailing: Text(formatIqd(asNum(p['estimated'])), style: const TextStyle(fontWeight: FontWeight.bold)),
                     ),
                   )),
-              Padding(padding: const EdgeInsets.all(8), child: Text('${d['note']}', style: const TextStyle(color: Colors.grey, fontSize: 12))),
+              Padding(padding: const EdgeInsets.all(8), child: Text('${d['note']}', style: const TextStyle(color: AppColors.muted, fontSize: 12))),
             ],
           ),
         );

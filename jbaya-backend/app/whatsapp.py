@@ -75,6 +75,64 @@ TEMPLATE_TEXT = {
 TEMPLATE_KIND = {"otp": "authentication", "bill_notice": "utility", "receipt": "utility"}
 
 
+def window_open(phone: str, cur=None) -> bool:
+    """True when the citizen messaged us within the last 24 hours (minus a safety margin): inside this window Meta
+    lets us send normal text messages for free."""
+    sql = """SELECT 1 FROM whatsapp_inbound WHERE phone = %s
+             AND COALESCE(sent_at, received_at) > NOW() - INTERVAL '24 hours' + (%s || ' minutes')::interval LIMIT 1"""
+    args = (phone, settings.WINDOW_SAFETY_MINUTES)
+    try:
+        if cur is not None:
+            cur.execute(sql, args)
+            return cur.fetchone() is not None
+        with get_conn() as conn, conn.cursor() as c:
+            c.execute(sql, args)
+            return c.fetchone() is not None
+    except Exception as e:  # never block a payment on this check
+        print(f"[whatsapp] window check failed: {e}")
+        return False
+
+
+def send_text(phone: str, body: str, kind: str) -> None:
+    """A normal text message inside the citizen's 24-hour window (free). Logged as status 'free'.
+    The preview never contains a code: kind 'otp' is logged without its text."""
+    preview = "OTP (hidden)" if kind == "otp" else body[:300]
+    if settings.WHATSAPP_MODE != "live":
+        print(f"\n[WHATSAPP console -> +{phone} | free text:{kind}]\n{body}\n")
+        _log(phone, f"text:{kind}", preview, "console")
+        return
+    if not settings.WHATSAPP_TOKEN or not settings.WHATSAPP_PHONE_NUMBER_ID:
+        raise HTTPException(500, "إعدادات واتساب غير مكتملة على الخادم")
+    url = f"https://graph.facebook.com/{settings.WHATSAPP_API_VERSION}/{settings.WHATSAPP_PHONE_NUMBER_ID}/messages"
+    payload = {"messaging_product": "whatsapp", "to": phone, "type": "text", "text": {"body": body}}
+    try:
+        r = requests.post(url, headers={"Authorization": f"Bearer {settings.WHATSAPP_TOKEN}"}, json=payload, timeout=15)
+    except requests.RequestException as e:
+        _log(phone, f"text:{kind}", preview, "failed", error=str(e))
+        raise HTTPException(502, "تعذر الاتصال بخدمة واتساب، حاول مجدداً")
+    if r.status_code >= 300:
+        _log(phone, f"text:{kind}", preview, "failed", error=r.text[:1000])
+        raise HTTPException(502, "فشل إرسال رسالة واتساب للمواطن")
+    msg_id = None
+    try:
+        msg_id = r.json()["messages"][0]["id"]
+    except (ValueError, KeyError, IndexError):
+        pass
+    _log(phone, f"text:{kind}", preview, "free", provider_id=msg_id)
+
+
+def fill(template_key: str, params: list) -> str:
+    text = TEMPLATE_TEXT[template_key]
+    for i, p in enumerate(params, 1):
+        text = text.replace("{{%d}}" % i, str(p))
+    return text
+
+
+def code_text(code: str) -> str:
+    return (f"رمز التحقق: {code}\n"
+            "اقرأ هذا الرمز لموظف الجباية الذي أمامك فقط. لا ترسله لأي شخص عبر الهاتف أو الرسائل.")
+
+
 def _text(value) -> dict:
     return {"type": "text", "text": str(value)}
 
@@ -94,6 +152,9 @@ def send_bill_notice(phone: str, *, name: str, property_code: str, total: float,
     """Utility template jbaya_bill_notice:
     {{1}} name, {{2}} property code, {{3}} total, {{4}} consumption fee, {{5}} company fee, {{6}} collector, {{7}} hotline"""
     params = [name, property_code, fmt_iqd(total), fmt_iqd(gov), fmt_iqd(fee), collector_code, settings.HOTLINE]
+    if settings.CITIZEN_FIRST_MESSAGE and window_open(phone):
+        send_text(phone, fill("bill_notice", params), "bill_notice")
+        return
     components = [{"type": "body", "parameters": [_text(p) for p in params]}]
     console = TEMPLATE_TEXT["bill_notice"]
     for i, p in enumerate(params, 1):
@@ -105,6 +166,9 @@ def send_receipt(phone: str, *, name: str, receipt_no: str, property_code: str, 
     """Utility template jbaya_receipt:
     {{1}} name, {{2}} receipt no, {{3}} total, {{4}} property code, {{5}} date, {{6}} hotline"""
     params = [name, receipt_no, fmt_iqd(total), property_code, date_str, settings.HOTLINE]
+    if settings.CITIZEN_FIRST_MESSAGE and window_open(phone):
+        send_text(phone, fill("receipt", params), "receipt")       # free inside the citizen's window
+        return
     components = [{"type": "body", "parameters": [_text(p) for p in params]}]
     console = TEMPLATE_TEXT["receipt"]
     for i, p in enumerate(params, 1):

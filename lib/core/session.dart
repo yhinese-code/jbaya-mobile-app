@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../features/auth/login_screen.dart';
 import 'api_client.dart';
+import 'theme.dart';
 import 'tracking_service.dart';
 
 /// The logged-in employee, as returned by POST /auth/login.
@@ -97,7 +98,11 @@ class PermittedTabs extends StatelessWidget {
     if (shown.isEmpty) {
       return Scaffold(
         appBar: appBar(null),
-        body: const Center(child: Text('لا توجد أقسام مفعلة لحسابك. راجع الإدارة التقنية')),
+        body: const EmptyState(
+          icon: Icons.lock_outline,
+          title: 'لا توجد أقسام مفعلة لحسابك',
+          message: 'راجع الإدارة التقنية لتفعيل الأقسام المطلوبة',
+        ),
       );
     }
     return DefaultTabController(
@@ -107,8 +112,14 @@ class PermittedTabs extends StatelessWidget {
           isScrollable: true,
           tabAlignment: TabAlignment.start,
           labelColor: Colors.white,
-          unselectedLabelColor: Colors.white70,
+          unselectedLabelColor: Colors.white.withValues(alpha: 0.78),
           indicatorColor: indicator,
+          indicatorWeight: 3,
+          indicatorSize: TabBarIndicatorSize.label,
+          labelStyle: const TextStyle(fontFamily: AppTheme.fontFamily, fontWeight: FontWeight.w700, fontSize: 14),
+          unselectedLabelStyle: const TextStyle(fontFamily: AppTheme.fontFamily, fontWeight: FontWeight.w500, fontSize: 14),
+          labelPadding: const EdgeInsets.symmetric(horizontal: Gap.md),
+          dividerColor: Colors.transparent,
           tabs: [for (final t in shown) t.tab],
         )),
         // no swipe between tabs: maps and lists inside the tabs need the drag gestures

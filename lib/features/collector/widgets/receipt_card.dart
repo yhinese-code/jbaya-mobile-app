@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/format.dart';
+import '../../../core/theme.dart';
 
 /// Shows the receipt returned by POST /bills/{id}/verify. All amounts come from the server.
 class ReceiptCard extends StatelessWidget {
@@ -13,51 +14,41 @@ class ReceiptCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final sent = receipt['receipt_whatsapp_sent'] == true;
     final viaMaster = receipt['verification_method'] == 'master_code';
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.green.shade50,
-        border: Border.all(color: Colors.green),
-        borderRadius: BorderRadius.circular(8),
-      ),
+    return AppCard(
+      accent: AppColors.good,
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Icon(Icons.receipt_long, size: 40, color: Colors.green),
-          Text('وصل رقم ${receipt['receipt_no']}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-          Text('${receipt['citizen_name']} - ${receipt['property_code']}'),
+          const Icon(Icons.check_circle, size: 48, color: AppColors.good),
+          const SizedBox(height: Gap.sm),
+          Text('وصل رقم ${receipt['receipt_no']}',
+              textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
+          Text('${receipt['citizen_name']} - ${receipt['property_code']}',
+              textAlign: TextAlign.center, style: const TextStyle(color: AppColors.muted)),
+          const SizedBox(height: Gap.sm),
           const Divider(),
           _row('رسوم الاستهلاك (للحكومة)', formatIqd(asNum(receipt['gov_amount']))),
           _row('أجور الجباية (للشركة)', formatIqd(asNum(receipt['company_fee']))),
-          const SizedBox(height: 8),
+          const Divider(),
+          const SizedBox(height: Gap.sm),
+          const Text('المبلغ المستلم', textAlign: TextAlign.center, style: TextStyle(color: AppColors.muted)),
           Text(
-            'المبلغ المستلم: ${formatIqd(asNum(receipt['total_amount']))}',
-            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.green),
+            formatIqd(asNum(receipt['total_amount'])),
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w700, color: AppColors.good),
           ),
-          const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.all(8),
-            width: double.infinity,
-            color: sent ? Colors.green.shade100 : Colors.orange.shade100,
-            child: Text(
-              sent ? 'تم إرسال الوصل إلى واتساب المواطن' : 'تم تسجيل الدفع، لكن تعذر إرسال الوصل عبر واتساب (سيُعاد لاحقاً)',
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-            ),
+          const SizedBox(height: Gap.sm),
+          NoticeBanner(
+            tone: sent ? Tone.good : Tone.warn,
+            icon: sent ? Icons.mark_chat_read_outlined : Icons.sms_failed_outlined,
+            title: sent ? 'تم إرسال الوصل إلى واتساب المواطن' : 'تم تسجيل الدفع، لكن تعذر إرسال الوصل عبر واتساب (سيُعاد لاحقاً)',
           ),
           if (viaMaster)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Text('تم التأكيد بالرمز الرئيسي - العملية مسجلة للمراجعة',
-                  style: TextStyle(color: Colors.orange.shade900, fontSize: 12)),
-            ),
-          const SizedBox(height: 16),
-          ElevatedButton(
+            const NoticeBanner(tone: Tone.warn, icon: Icons.key_outlined, title: 'تم التأكيد بالرمز الرئيسي - العملية مسجلة للمراجعة'),
+          const SizedBox(height: Gap.md),
+          FilledButton(
             onPressed: onDone,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green.shade700,
-              foregroundColor: Colors.white,
-              minimumSize: const Size(double.infinity, 50),
-            ),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.good, minimumSize: const Size.fromHeight(52)),
             child: const Text('إنهاء'),
           ),
         ],
@@ -67,10 +58,13 @@ class ReceiptCard extends StatelessWidget {
 
   Widget _row(String label, String value) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
+      padding: const EdgeInsets.symmetric(vertical: Gap.xs),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [Text(label), Text(value, style: const TextStyle(fontWeight: FontWeight.bold))],
+        children: [
+          Text(label, style: const TextStyle(color: AppColors.muted)),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.w600)),
+        ],
       ),
     );
   }

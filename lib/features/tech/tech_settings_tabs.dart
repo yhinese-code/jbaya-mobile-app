@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/format.dart' show asNum;
+import '../../core/theme.dart';
 import '../shared/ui.dart';
 import 'tech_common.dart';
 
@@ -89,12 +90,12 @@ class TechSettingsTab extends StatelessWidget {
         return RefreshIndicator(
           onRefresh: reload,
           child: ListView(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(Gap.md),
             children: [
               Row(children: [
                 const Expanded(
                   child: Text('كل تغيير يُطبّق خلال ثوانٍ ويُسجّل في سجل التغييرات وسجل التدقيق',
-                      style: TextStyle(color: Colors.grey, fontSize: 13)),
+                      style: TextStyle(color: AppColors.muted, fontSize: 13)),
                 ),
                 const SizedBox(width: 8),
                 OutlinedButton.icon(
@@ -190,10 +191,10 @@ class _SettingTile extends StatelessWidget {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           Expanded(child: Text(txt(item['label']), style: const TextStyle(fontWeight: FontWeight.w600))),
-          if (overridden) StatusChip('معدّل', Colors.orange.shade800),
+          if (overridden) StatusChip('معدّل', AppColors.warn),
           if (isBool) Switch(value: item['value'] == true, onChanged: (v) => _toggle(context, v)),
         ]),
-        if (help.isNotEmpty) Text(help, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+        if (help.isNotEmpty) Text(help, style: const TextStyle(color: AppColors.muted, fontSize: 12)),
         if (!isBool)
           Padding(
             padding: const EdgeInsets.only(top: 4),
@@ -203,7 +204,7 @@ class _SettingTile extends StatelessWidget {
         if (overridden)
           Text(
             'الافتراضي: ${settingText(item, item['default'])}  •  عُدّل ${shortTs(item['updated_at'])}',
-            style: const TextStyle(color: Colors.grey, fontSize: 12),
+            style: const TextStyle(color: AppColors.muted, fontSize: 12),
           ),
         Wrap(crossAxisAlignment: WrapCrossAlignment.center, spacing: 4, children: [
           if (!isBool)
@@ -218,7 +219,7 @@ class _SettingTile extends StatelessWidget {
             Checkbox(value: item['owner_editable'] == true, onChanged: (v) => _ownerEditable(context, v ?? false)),
             const Text('يغيّره المالك', style: TextStyle(fontSize: 13)),
           ]),
-          Text(txt(item['key']), textDirection: TextDirection.ltr, style: const TextStyle(color: Colors.grey, fontSize: 11)),
+          Text(txt(item['key']), textDirection: TextDirection.ltr, style: const TextStyle(color: AppColors.muted, fontSize: 11)),
         ]),
       ]),
     );
@@ -410,10 +411,10 @@ class _SettingEditDialogState extends State<_SettingEditDialog> {
             if (txt(item['help'], '').isNotEmpty)
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
-                child: Text(txt(item['help']), style: const TextStyle(color: Colors.grey, fontSize: 13)),
+                child: Text(txt(item['help']), style: const TextStyle(color: AppColors.muted, fontSize: 13)),
               ),
             Text('الحالية: ${settingText(item, item['value'])}  •  الافتراضية: ${settingText(item, item['default'])}',
-                style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                style: const TextStyle(fontSize: 12, color: AppColors.muted)),
             const SizedBox(height: 12),
             _editor(),
             const SizedBox(height: 12),
@@ -421,11 +422,10 @@ class _SettingEditDialogState extends State<_SettingEditDialog> {
               controller: _note,
               decoration: const InputDecoration(labelText: 'سبب التغيير (اختياري)', border: OutlineInputBorder(), isDense: true),
             ),
-            if (_error != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Text(_error!, style: const TextStyle(color: Colors.red)),
-              ),
+            if (_error != null) ...[
+              const SizedBox(height: Gap.sm),
+              NoticeBanner(tone: Tone.bad, title: _error!),
+            ],
           ]),
         ),
       ),
@@ -452,15 +452,12 @@ class TechPermissionsTab extends StatelessWidget {
         return RefreshIndicator(
           onRefresh: reload,
           child: ListView(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(Gap.md),
             children: [
-              Card(
-                color: kTechColor.withValues(alpha: 0.06),
-                child: const ListTile(
-                  leading: Icon(Icons.info_outline, color: kTechColor),
-                  title: Text('إخفاء قسم يمنع الوصول إليه في الواجهة والخادم'),
-                  subtitle: Text('قد يحتاج الموظف لإعادة الدخول حتى يختفي القسم أو يظهر في واجهته'),
-                ),
+              const NoticeBanner(
+                icon: Icons.info_outline,
+                title: 'إخفاء قسم يمنع الوصول إليه في الواجهة والخادم',
+                message: 'قد يحتاج الموظف لإعادة الدخول حتى يختفي القسم أو يظهر في واجهته',
               ),
               for (final r in roles) _roleCard(context, r, reload),
             ],
@@ -484,7 +481,7 @@ class TechPermissionsTab extends StatelessWidget {
               Expanded(
                 child: Text(txt(r['role_label'] ?? r['role']), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
               ),
-              StatusChip('$on من ${features.length} مفعّل', on == features.length ? Colors.green.shade700 : Colors.orange.shade800),
+              StatusChip('$on من ${features.length} مفعّل', on == features.length ? AppColors.good : AppColors.warn),
             ]),
           ),
           for (final f in features)

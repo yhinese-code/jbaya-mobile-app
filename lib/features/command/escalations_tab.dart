@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/format.dart';
+import '../../core/theme.dart';
 
 /// Cash differences supervisors escalated, plus any left unresolved for more than 24 hours.
 class EscalationsTab extends StatefulWidget {
@@ -46,7 +47,7 @@ class _EscalationsTabState extends State<EscalationsTab> {
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView.builder(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(Gap.lg),
         itemCount: _items.length,
         itemBuilder: (context, i) {
           final e = _items[i];

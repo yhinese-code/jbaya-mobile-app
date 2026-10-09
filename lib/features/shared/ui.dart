@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/theme.dart';
 
 /// Small coloured pill for statuses.
 class StatusChip extends StatelessWidget {
@@ -11,16 +12,56 @@ class StatusChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withValues(alpha: 0.4)),
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
       ),
-      child: Text(label, style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.bold)),
+      child: Text(label, style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w600, height: 1.4)),
     );
   }
 }
+
+/// Status word -> tone colour from the app palette (same mapping as core/format.dart statusColor,
+/// but with the design-system colours; 'leave' reads as info rather than warning).
+Color statusTone(String? s) {
+  switch (s) {
+    case 'approved':
+    case 'paid':
+    case 'completed':
+    case 'present':
+    case 'returned':
+      return toneColor(Tone.good);
+    case 'rejected':
+    case 'absent':
+    case 'lost':
+      return toneColor(Tone.bad);
+    case 'cancelled':
+    case 'weekend':
+      return toneColor(Tone.neutral);
+    case 'leave':
+      return toneColor(Tone.info);
+    default:
+      return toneColor(Tone.warn);
+  }
+}
+
+/// Tab bar for a portal AppBar (white indicator, readable white labels). Same look as PermittedTabs.
+TabBar portalTabBar(List<Widget> tabs) => TabBar(
+      isScrollable: true,
+      tabAlignment: TabAlignment.start,
+      labelColor: Colors.white,
+      unselectedLabelColor: Colors.white.withValues(alpha: 0.78),
+      indicatorColor: Colors.white,
+      indicatorWeight: 3,
+      indicatorSize: TabBarIndicatorSize.label,
+      labelStyle: const TextStyle(fontFamily: AppTheme.fontFamily, fontWeight: FontWeight.w700, fontSize: 14),
+      unselectedLabelStyle: const TextStyle(fontFamily: AppTheme.fontFamily, fontWeight: FontWeight.w500, fontSize: 14),
+      labelPadding: const EdgeInsets.symmetric(horizontal: Gap.md),
+      dividerColor: Colors.transparent,
+      tabs: tabs,
+    );
 
 class SectionTitle extends StatelessWidget {
   final String text;
@@ -30,10 +71,10 @@ class SectionTitle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(top: 12, bottom: 8),
+      padding: const EdgeInsets.only(top: Gap.lg, bottom: Gap.sm),
       child: Row(
         children: [
-          Expanded(child: Text(text, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold))),
+          Expanded(child: Text(text, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.ink))),
           ...actions,
         ],
       ),
@@ -47,11 +88,11 @@ Future<T?> runApi<T>(BuildContext context, Future<T> Function() call, {String? s
   try {
     final r = await call();
     if (success != null) {
-      messenger.showSnackBar(SnackBar(content: Text(success), backgroundColor: Colors.green.shade700));
+      messenger.showSnackBar(SnackBar(content: Text(success), backgroundColor: AppColors.good));
     }
     return r;
   } on ApiException catch (e) {
-    messenger.showSnackBar(SnackBar(content: Text(e.message), backgroundColor: Colors.red.shade700));
+    messenger.showSnackBar(SnackBar(content: Text(e.message), backgroundColor: AppColors.bad));
     return null;
   }
 }
@@ -161,14 +202,11 @@ class ApiViewState extends State<ApiView> {
   Widget build(BuildContext context) {
     if (_loading) return const Center(child: CircularProgressIndicator());
     if (_error != null && _data == null) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(_error!, style: const TextStyle(color: Colors.red)),
-            TextButton(onPressed: reload, child: const Text('إعادة المحاولة')),
-          ],
-        ),
+      return EmptyState(
+        icon: Icons.cloud_off,
+        title: 'تعذر تحميل البيانات',
+        message: _error,
+        action: OutlinedButton.icon(onPressed: reload, icon: const Icon(Icons.refresh), label: const Text('إعادة المحاولة')),
       );
     }
     return widget.builder(context, _data, reload);

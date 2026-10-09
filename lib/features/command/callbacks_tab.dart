@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../core/api_client.dart';
 import '../../core/format.dart';
+import '../../core/theme.dart';
 import '../shared/ui.dart';
 import 'cc_widgets.dart';
 
@@ -116,7 +117,7 @@ class _CallbacksTabState extends State<CallbacksTab> {
       counts[s] = (counts[s] ?? 0) + 1;
     }
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(Gap.lg),
       children: [
         _header(counts),
         const SizedBox(height: 12),
@@ -143,7 +144,7 @@ class _CallbacksTabState extends State<CallbacksTab> {
 
   Widget _header(Map<String, int> counts) {
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(Gap.md),
       decoration: BoxDecoration(
         color: CC.panel,
         borderRadius: BorderRadius.circular(12),
@@ -176,7 +177,7 @@ class _CallbacksTabState extends State<CallbacksTab> {
         ]),
         const SizedBox(height: 6),
         Container(
-          padding: const EdgeInsets.all(10),
+          padding: const EdgeInsets.all(Gap.md),
           decoration: BoxDecoration(
             color: CC.accent.withValues(alpha: 0.12),
             borderRadius: BorderRadius.circular(8),
@@ -219,7 +220,7 @@ class _CallbacksTabState extends State<CallbacksTab> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Container(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(Gap.md),
         decoration: BoxDecoration(
           color: CC.panel,
           borderRadius: BorderRadius.circular(12),

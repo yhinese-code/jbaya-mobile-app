@@ -46,3 +46,12 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# Production secrets and data (deploy/)
+deploy/.env
+deploy/backups/
+deploy/web/
+# Android release signing
+android/key.properties
+*.jks
+*.keystore

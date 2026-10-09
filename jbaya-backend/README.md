@@ -121,7 +121,7 @@ transfer) → the directorate (trust handover, from the cash box or the bank). S
 accounts and profit are **owner only**. Manual corrections come as plain choices (bank charge, cash expense, tax paid,
 opening balances); write-offs and corrections above `OWNER_APPROVAL_IQD` wait for the owner.
 
-**Owner panel (`owner` role, WhatsApp code at login).** Profit by month, company income by sector and per property,
+**Owner panel (`owner` role).** Profit by month, company income by sector and per property,
 company breakeven (receipts needed this month to cover all salaries), approvals, a log of every finance action,
 alerts (cash outside HQ above `CASH_OUTSIDE_HQ_ALERT_IQD`, differences, approvals waiting, behind breakeven).
 
@@ -163,6 +163,24 @@ log and cost, fraud watch, audit log. The tech panel also picks which settings t
 Command); supervisors collect in the field with the same quota (their own cash goes into their handover; their own
 estimates are reviewed by another supervisor); leave is decided by HR only (never by the applicant); the 35% rule
 (`GAIN_SHARE_MODE`, finance tab صيغة الـ35%); previous bills (file import with review, or at the house with a photo).
+
+## Phase 6 additions (citizen messages first, offline work, production)
+
+**Citizen messages first (free).** With `CITIZEN_FIRST_MESSAGE=true` (default) the code is not sent straight away:
+the collector's screen shows a QR and the company number; the citizen sends any WhatsApp message (his name) and the
+server answers inside WhatsApp's free 24-hour window with the bill notice and the code (`app/citizen_channel.py`).
+The receipt is also free inside the window. If the citizen cannot message us, the collector presses the paid-message
+button (`?channel=template`), which uses the approved templates below exactly as before.
+Meta webhook: `https://<API_DOMAIN>/whatsapp/webhook`, verify token = `WHATSAPP_VERIFY_TOKEN`, subscribe to
+`messages`, and set `WHATSAPP_APP_SECRET` so unsigned calls are refused. In test mode (`WHATSAPP_MODE=console`) the
+tech panel has a "simulate citizen message" box (`POST /whatsapp/simulate-inbound`).
+
+**Offline.** `POST /collector/offline/sync` takes registrations and readings recorded without internet (each with
+a `client_id`, so repeating a sync is safe). Offline houses wait on the route until the citizen messages the company
+number (that confirms his number) or a code is entered on the next visit. Money is never confirmed offline.
+
+**Production.** See `../deploy/README.md`: Docker Compose (PostgreSQL, API, Caddy with automatic HTTPS), install,
+nightly backups, restore and update scripts.
 
 ## WhatsApp templates to create in Meta Business Manager
 

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../core/format.dart';
 import '../../core/session.dart';
+import '../../core/theme.dart';
 import '../shared/ui.dart';
 import 'charts.dart';
 
@@ -39,9 +40,9 @@ const Map<String, String> _settlementLabels = {
 };
 
 Color _settlementColor(String s) => switch (s) {
-      'posted' => Colors.green.shade700,
-      'rejected' => Colors.red.shade700,
-      _ => Colors.orange.shade800,
+      'posted' => AppColors.good,
+      'rejected' => AppColors.bad,
+      _ => AppColors.warn,
     };
 
 /// 'صيغة الـ35%': the company's share of the increase in collections, both candidate formulas side by side.
@@ -82,7 +83,7 @@ class _GainShareTabState extends State<GainShareTab> {
           title: Text('إيرادات ${_monthLabel(month)}'),
           content: Column(mainAxisSize: MainAxisSize.min, children: [
             const Text('ما جُبي من الماء في هذا الشهر من سنة 2025 (قبل الشركة). الزيادة تُحسب فوق هذا المبلغ.',
-                style: TextStyle(fontSize: 12, color: Colors.grey)),
+                style: TextStyle(fontSize: 12, color: AppColors.muted)),
             const SizedBox(height: 12),
             TextField(
               controller: amountC,
@@ -154,19 +155,19 @@ class _GainShareTabState extends State<GainShareTab> {
         return RefreshIndicator(
           onRefresh: reload,
           child: ListView(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(Gap.md),
             children: [
               _header(d, mode, pctStr),
               if (!confirmed) _notConfirmedCard(),
               const SectionTitle('آخر 6 أشهر: الخياران جنباً إلى جنب'),
-              if (months.isEmpty) const Padding(padding: EdgeInsets.all(24), child: Center(child: Text('لا بيانات بعد'))),
+              if (months.isEmpty) const EmptyState(icon: Icons.bar_chart, title: 'لا توجد بيانات أشهر سابقة بعد'),
               ...months.map((m) => _monthCard(m, mode, pctStr)),
               SectionTitle('إيرادات 2025 (الأساس)',
-                  actions: [Text('${baselines.length}/12 شهراً', style: const TextStyle(color: Colors.grey))]),
+                  actions: [Text('${baselines.length}/12 شهراً', style: const TextStyle(color: AppColors.muted))]),
               const Padding(
                 padding: EdgeInsets.only(bottom: 6),
                 child: Text('ما جُبي في كل شهر من 2025. يُستخدم في الخيار (أ): الزيادة = المحصّل هذا الشهر − نفس الشهر من 2025.',
-                    style: TextStyle(color: Colors.grey, fontSize: 12)),
+                    style: TextStyle(color: AppColors.muted, fontSize: 12)),
               ),
               Card(
                 child: Column(children: [
@@ -182,52 +183,36 @@ class _GainShareTabState extends State<GainShareTab> {
   }
 
   Widget _header(Map d, String mode, String pctStr) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    return AppCard(
+      padding: const EdgeInsets.all(Gap.lg),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
-            const Icon(Icons.percent, color: Colors.indigo),
+            const Icon(Icons.percent, color: AppColors.brand),
             const SizedBox(width: 8),
             const Expanded(child: Text('صيغة الـ35%', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
-            StatusChip('${d['mode_label'] ?? mode}', mode == 'not_set' ? Colors.orange.shade800 : Colors.indigo),
+            StatusChip('${d['mode_label'] ?? mode}', mode == 'not_set' ? AppColors.warn : AppColors.brand),
           ]),
           const SizedBox(height: 8),
           Text('الشركة تأخذ أجور الجباية على كل وصل (${formatIqd(asNum(d['fee']))}) + نسبة $pctStr% من الزيادة.',
               style: const TextStyle(fontSize: 15)),
           const SizedBox(height: 6),
           const Text('(أ) فوق إيرادات 2025: الزيادة هي ما جُبي هذا الشهر فوق ما جُبي في نفس الشهر من 2025، تُسوّى شهرياً بموافقة المالك.',
-              style: TextStyle(fontSize: 12, color: Colors.grey)),
+              style: TextStyle(fontSize: 12, color: AppColors.muted)),
           const Text('(ب) زيادة كل منزل: الزيادة هي ما يدفعه كل منزل فوق فاتورته السابقة لنفس عدد الأيام، تُقيّد على كل وصل.',
-              style: TextStyle(fontSize: 12, color: Colors.grey)),
+              style: TextStyle(fontSize: 12, color: AppColors.muted)),
           if (d['note'] != null) ...[
             const SizedBox(height: 6),
-            Text('${d['note']}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+            Text('${d['note']}', style: const TextStyle(fontSize: 12, color: AppColors.muted)),
           ],
         ]),
-      ),
     );
   }
 
   Widget _notConfirmedCard() {
-    final amber = Colors.amber.shade800;
-    return Card(
-      color: Colors.amber.withValues(alpha: 0.15),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: amber, width: 1.5)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Icon(Icons.warning_amber_rounded, color: amber, size: 32),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('أدخل صيغة الـ35% هنا', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: amber)),
-              const SizedBox(height: 4),
-              const Text('الصيغة لم تُحدد بعد. تُحدد من الإدارة التقنية بعد تأكيد العقد. الأرقام أدناه تقديرات ولا يُقيد شيء.'),
-            ]),
-          ),
-        ]),
-      ),
+    return const NoticeBanner(
+      tone: Tone.warn,
+      title: 'أدخل صيغة الـ35% هنا',
+      message: 'الصيغة لم تُحدد بعد. تُحدد من الإدارة التقنية بعد تأكيد العقد. الأرقام أدناه تقديرات ولا يُقيد شيء.',
     );
   }
 
@@ -261,16 +246,15 @@ class _GainShareTabState extends State<GainShareTab> {
       ],
     );
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+    return AppCard(
+      padding: const EdgeInsets.all(Gap.md),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Row(children: [
             Expanded(
               child: Text(_monthLabel(month), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             ),
-            Text('${formatNumber(asNum(m['receipts']))} وصل', style: const TextStyle(color: Colors.grey)),
-            if (!past) ...[const SizedBox(width: 8), const StatusChip('الشهر الجاري', Colors.blueGrey)],
+            Text('${formatNumber(asNum(m['receipts']))} وصل', style: const TextStyle(color: AppColors.muted)),
+            if (!past) ...[const SizedBox(width: 8), const StatusChip('الشهر الجاري', AppColors.muted)],
           ]),
           const SizedBox(height: 8),
           LayoutBuilder(builder: (context, c) {
@@ -295,7 +279,7 @@ class _GainShareTabState extends State<GainShareTab> {
                 StatusChip('التسوية: ${_settlementLabels[sStatus] ?? sStatus}', _settlementColor(sStatus ?? '')),
                 Text(formatIqd(asNum(settlement['amount'])), style: const TextStyle(fontWeight: FontWeight.bold)),
                 if (settlement['decided_at'] != null)
-                  Text('قُرّرت ${formatDate(settlement['decided_at'])}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                  Text('قُرّرت ${formatDate(settlement['decided_at'])}', style: const TextStyle(fontSize: 12, color: AppColors.muted)),
               ],
               if (canSettle)
                 hasBaseline
@@ -305,35 +289,40 @@ class _GainShareTabState extends State<GainShareTab> {
                         label: const Text('طلب التسوية'),
                       )
                     : const Text('أدخل إيرادات نفس الشهر من 2025 أولاً لطلب التسوية',
-                        style: TextStyle(fontSize: 12, color: Colors.orange)),
+                        style: TextStyle(fontSize: 12, color: AppColors.warn)),
             ],
           ),
         ]),
-      ),
     );
   }
 
   Widget _option({required String title, required bool active, required List<(String, String)> rows}) {
-    final color = active ? Colors.indigo : Colors.grey;
+    final color = active ? AppColors.brand : AppColors.muted;
     return Container(
-      padding: const EdgeInsets.all(10),
+      padding: const EdgeInsets.all(Gap.md),
       decoration: BoxDecoration(
-        color: active ? Colors.indigo.withValues(alpha: 0.06) : null,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: color.withValues(alpha: active ? 0.8 : 0.3), width: active ? 2 : 1),
+        color: active ? AppColors.brand.withValues(alpha: 0.05) : null,
+        borderRadius: BorderRadius.circular(Gap.radiusSm),
+        border: Border.all(color: active ? color.withValues(alpha: 0.6) : AppColors.border, width: active ? 1.5 : 1),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Row(children: [
-          Expanded(child: Text(title, style: TextStyle(fontWeight: FontWeight.bold, color: active ? Colors.indigo : null))),
-          if (active) const StatusChip('الصيغة المعتمدة', Colors.indigo),
+          Expanded(child: Text(title, style: TextStyle(fontWeight: FontWeight.bold, color: active ? AppColors.brand : null))),
+          if (active) const StatusChip('الصيغة المعتمدة', AppColors.brand),
         ]),
         const SizedBox(height: 6),
         for (final r in rows)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 2),
             child: Row(children: [
-              Expanded(child: Text(r.$1, style: const TextStyle(fontSize: 13, color: Colors.grey))),
-              Text(r.$2, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: r.$2 == 'لم تُدخل' ? Colors.orange : null)),
+              Expanded(child: Text(r.$1, style: const TextStyle(fontSize: 13, color: AppColors.muted))),
+              Text(r.$2,
+                  textAlign: TextAlign.end,
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: r.$2 == 'لم تُدخل' ? AppColors.warn : null,
+                      fontFeatures: const [FontFeature.tabularFigures()])),
             ]),
           ),
       ]),
@@ -356,7 +345,8 @@ class _GainShareTabState extends State<GainShareTab> {
             ),
       trailing: Row(mainAxisSize: MainAxisSize.min, children: [
         Text(b == null ? 'لم تُدخل' : formatIqd(asNum(b['amount'])),
-            style: TextStyle(fontWeight: FontWeight.bold, color: b == null ? Colors.orange : null)),
+            style: TextStyle(
+                fontWeight: FontWeight.bold, color: b == null ? AppColors.warn : null, fontFeatures: const [FontFeature.tabularFigures()])),
         if (_canEditBaselines)
           IconButton(
             tooltip: b == null ? 'إدخال' : 'تعديل',

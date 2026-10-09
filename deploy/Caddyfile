@@ -1,0 +1,20 @@
+# HTTPS certificates are issued automatically (Let's Encrypt) once both domains point at this server.
+{$APP_DOMAIN} {
+	encode gzip
+	root * /srv/web
+	try_files {path} /index.html
+	file_server
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer
+	}
+}
+
+{$API_DOMAIN} {
+	encode gzip
+	request_body {
+		max_size 40MB
+	}
+	reverse_proxy api:8000
+}

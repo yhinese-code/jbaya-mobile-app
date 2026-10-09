@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/theme.dart';
 import '../shared/ui.dart';
 import 'tech_common.dart';
 
@@ -16,13 +17,13 @@ const Map<String, String> _deviceStatusLabels = {
 Color _deviceStatusColor(String s) {
   switch (s) {
     case 'approved':
-      return Colors.green.shade700;
+      return AppColors.good;
     case 'rejected':
-      return Colors.red.shade700;
+      return AppColors.bad;
     case 'revoked':
-      return Colors.grey.shade700;
+      return AppColors.muted;
     default:
-      return Colors.orange.shade800;
+      return AppColors.warn;
   }
 }
 
@@ -49,7 +50,7 @@ class _TechDevicesTabState extends State<TechDevicesTab> {
   Widget build(BuildContext context) {
     return Column(children: [
       Padding(
-        padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+        padding: const EdgeInsets.fromLTRB(Gap.md, Gap.md, Gap.md, Gap.xs),
         child: SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: SegmentedButton<String>(
@@ -70,7 +71,7 @@ class _TechDevicesTabState extends State<TechDevicesTab> {
               child: rows.isEmpty
                   ? ListView(children: const [EmptyNote('لا توجد أجهزة في هذه القائمة')])
                   : ListView.builder(
-                      padding: const EdgeInsets.all(12),
+                      padding: const EdgeInsets.all(Gap.md),
                       itemCount: rows.length,
                       itemBuilder: (context, i) => _DeviceCard(device: rows[i], onChanged: reload),
                     ),
@@ -93,11 +94,11 @@ class _DeviceCard extends StatelessWidget {
     final messenger = ScaffoldMessenger.of(context);
     try {
       await ApiClient.instance.post(_path, {'action': 'approve'});
-      messenger.showSnackBar(SnackBar(content: const Text('تمت الموافقة على الجهاز'), backgroundColor: Colors.green.shade700));
+      messenger.showSnackBar(SnackBar(content: const Text('تمت الموافقة على الجهاز'), backgroundColor: AppColors.good));
     } on ApiException catch (e) {
       final overLimit = e.statusCode == 409 && (e.message.contains('المسموح') || e.message.contains('الأقدم'));
       if (!overLimit) {
-        messenger.showSnackBar(SnackBar(content: Text(e.message), backgroundColor: Colors.red.shade700));
+        messenger.showSnackBar(SnackBar(content: Text(e.message), backgroundColor: AppColors.bad));
         return;
       }
       if (!context.mounted) return;
@@ -145,10 +146,9 @@ class _DeviceCard extends StatelessWidget {
     final approved = toInt(d['approved_count']);
     final limit = toInt(d['limit']);
     final full = limit > 0 && approved >= limit;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    return AppCard(
+      padding: const EdgeInsets.all(Gap.md),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
             Expanded(
               child: Text('${txt(d['employee_code'])} - ${txt(d['full_name'])}', style: const TextStyle(fontWeight: FontWeight.bold)),
@@ -157,7 +157,7 @@ class _DeviceCard extends StatelessWidget {
             StatusChip(_deviceStatusLabels[status] ?? status, _deviceStatusColor(status)),
           ]),
           InfoLine(Icons.badge, '${txt(d['role_label'])}  •  الأجهزة المعتمدة: $approved من $limit',
-              color: full ? Colors.deepOrange : null),
+              color: full ? AppColors.warn : null),
           InfoLine(Icons.devices, '${txt(d['label'], 'جهاز بلا اسم')} (${txt(d['platform'])})  •  ${txt(d['device_id'])}'),
           InfoLine(Icons.lan, 'أول IP: ${txt(d['first_ip'])}  •  آخر IP: ${txt(d['last_ip'])}'),
           InfoLine(Icons.schedule, 'الطلب: ${shortTs(d['requested_at'])}  •  آخر ظهور: ${shortTs(d['last_seen_at'])}'),
@@ -169,29 +169,28 @@ class _DeviceCard extends StatelessWidget {
           const SizedBox(height: 8),
           Wrap(spacing: 8, runSpacing: 6, children: [
             if (status != 'approved')
-              FilledButton.icon(
+              ElevatedButton.icon(
                 onPressed: () => _approve(context),
                 icon: const Icon(Icons.check),
                 label: const Text('موافقة'),
-                style: FilledButton.styleFrom(backgroundColor: Colors.green.shade700),
+                style: ElevatedButton.styleFrom(backgroundColor: AppColors.good, foregroundColor: Colors.white),
               ),
             if (status == 'pending')
               OutlinedButton.icon(
                 onPressed: () => _reject(context),
                 icon: const Icon(Icons.close),
                 label: const Text('رفض'),
-                style: OutlinedButton.styleFrom(foregroundColor: Colors.red.shade700),
+                style: OutlinedButton.styleFrom(foregroundColor: AppColors.bad),
               ),
             if (status == 'approved')
               OutlinedButton.icon(
                 onPressed: () => _revoke(context),
                 icon: const Icon(Icons.block),
                 label: const Text('إلغاء الاعتماد'),
-                style: OutlinedButton.styleFrom(foregroundColor: Colors.red.shade700),
+                style: OutlinedButton.styleFrom(foregroundColor: AppColors.bad),
               ),
           ]),
         ]),
-      ),
     );
   }
 }
@@ -222,7 +221,7 @@ class TechSessionsTab extends StatelessWidget {
         return RefreshIndicator(
           onRefresh: reload,
           child: ListView(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(Gap.md),
             children: [
               SectionTitle('الجلسات الفعّالة (${rows.length})'),
               if (rows.isEmpty) const EmptyNote('لا توجد جلسات فعّالة'),
@@ -242,8 +241,8 @@ class TechSessionsTab extends StatelessWidget {
                       ),
                       TextButton.icon(
                         onPressed: () => _end(context, s, reload),
-                        icon: const Icon(Icons.power_settings_new, color: Colors.red),
-                        label: const Text('إنهاء', style: TextStyle(color: Colors.red)),
+                        icon: const Icon(Icons.power_settings_new, color: AppColors.bad),
+                        label: const Text('إنهاء', style: TextStyle(color: AppColors.bad)),
                       ),
                     ]),
                   ),

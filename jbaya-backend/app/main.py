@@ -6,8 +6,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from .config import settings
 from . import runtime
 from .db import apply_schema, close_pool, dict_cursor, get_conn, init_pool
-from .routers import (admin, alerts, analytics, auth, collector, command, finance, hr, legacy, me, owner, performance,
-                      prev_bills, supervisor, tech, tracking)
+from .routers import (admin, alerts, analytics, auth, collector, command, finance, hr, me, offline, owner,
+                      performance, prev_bills, supervisor, tech, tracking, whatsapp_hook)
 
 _INSECURE = {"dev-only-change-me-jwt-0000000000000000", "dev-only-change-me-otp-0000000000000000", "dev-only-change-me-master-0000000000000"}
 
@@ -26,7 +26,7 @@ async def lifespan(app: FastAPI):
     close_pool()
 
 
-app = FastAPI(title="Jbaya Collection System API", version="0.8.0", lifespan=lifespan)
+app = FastAPI(title="Jbaya Collection System API", version="0.9.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -46,11 +46,12 @@ app.include_router(performance.router)
 app.include_router(owner.router)
 app.include_router(tech.router)
 app.include_router(prev_bills.router)
+app.include_router(offline.router)
+app.include_router(whatsapp_hook.router)
 app.include_router(alerts.router)
 app.include_router(tracking.router)
 app.include_router(hr.router)
 app.include_router(me.router)
-app.include_router(legacy.router)
 
 
 @app.get("/health")

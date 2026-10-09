@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/format.dart';
+import '../../core/theme.dart';
 import 'cc_widgets.dart';
 
 /// Sector progress (coverage of the collection cycle) and the collector leaderboard with risk signals.
@@ -51,7 +52,7 @@ class _PerformanceTabState extends State<PerformanceTab> {
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(Gap.lg),
         children: [
           if (_error != null) Text(_error!, style: const TextStyle(color: CC.danger)),
           const Text('تقدم القواطع (دورة الجباية)', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: CC.text)),
@@ -116,7 +117,7 @@ class _PerformanceTabState extends State<PerformanceTab> {
     final color = coverage >= 0.8 ? CC.ok : (coverage >= 0.5 ? CC.warn : CC.danger);
     return Container(
       width: 300,
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(Gap.md),
       decoration: BoxDecoration(color: CC.panel, borderRadius: BorderRadius.circular(12), border: Border.all(color: CC.border)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

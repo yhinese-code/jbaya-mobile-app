@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/session.dart';
+import '../../core/theme.dart';
 import '../command/cc_widgets.dart';
 import '../command/health_tab.dart';
 import '../finance/charts.dart' show KpiCard;
@@ -36,19 +37,12 @@ class TechPortalScreen extends StatelessWidget {
     return DefaultTabController(
       length: _tabs.length,
       child: Scaffold(
-        appBar: AppBar(
-          title: Text('لوحة التقنية - ${Session.instance.fullName}', style: const TextStyle(fontWeight: FontWeight.bold)),
-          backgroundColor: kTechColor,
-          foregroundColor: Colors.white,
+        appBar: portalAppBar(
+          title: 'لوحة التقنية',
+          subtitle: Session.instance.fullName,
+          color: kTechColor,
           actions: const [LogoutButton()],
-          bottom: const TabBar(
-            isScrollable: true,
-            tabAlignment: TabAlignment.start,
-            labelColor: Colors.white,
-            unselectedLabelColor: Colors.white70,
-            indicatorColor: Colors.cyanAccent,
-            tabs: _tabs,
-          ),
+          bottom: portalTabBar(_tabs),
         ),
         body: TabBarView(children: [
           const TechOverviewTab(),
@@ -96,62 +90,62 @@ class TechOverviewTab extends StatelessWidget {
         return RefreshIndicator(
           onRefresh: reload,
           child: ListView(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(Gap.md),
             children: [
               if (maintenance)
-                Card(
-                  color: Colors.red.withValues(alpha: 0.1),
-                  child: const ListTile(
-                    leading: Icon(Icons.construction, color: Colors.red, size: 32),
-                    title: Text('وضع الصيانة مفعّل', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
-                    subtitle: Text('النظام للقراءة فقط، ولا يُحفظ أي تغيير إلا من لوحة التقنية'),
-                  ),
+                const NoticeBanner(
+                  tone: Tone.bad,
+                  icon: Icons.construction,
+                  title: 'وضع الصيانة مفعّل',
+                  message: 'النظام للقراءة فقط، ولا يُحفظ أي تغيير إلا من لوحة التقنية',
                 ),
               if (pending > 0)
-                Card(
-                  color: Colors.orange.withValues(alpha: 0.14),
-                  child: ListTile(
-                    leading: const Icon(Icons.phonelink_lock, color: Colors.deepOrange, size: 32),
-                    title: Text('$pending جهاز بانتظار الموافقة', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                    subtitle: const Text('الموظف لا يستطيع الدخول من الجهاز الجديد حتى توافق عليه'),
-                    trailing: TextButton(
+                NoticeBanner(
+                  tone: Tone.warn,
+                  icon: Icons.phonelink_lock,
+                  title: '$pending جهاز بانتظار الموافقة',
+                  message: 'الموظف لا يستطيع الدخول من الجهاز الجديد حتى توافق عليه',
+                  action: Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: OutlinedButton(
                       onPressed: () => DefaultTabController.of(context).animateTo(1),
                       child: const Text('مراجعة'),
                     ),
                   ),
                 ),
+              if (maintenance || pending > 0) const SizedBox(height: Gap.sm),
               Wrap(spacing: 8, runSpacing: 8, children: [
                 KpiCard(
                   label: 'أجهزة بانتظار الموافقة',
                   value: '$pending',
                   icon: Icons.phonelink_lock,
-                  color: pending > 0 ? Colors.deepOrange : Colors.green,
+                  color: pending > 0 ? AppColors.warn : AppColors.good,
                 ),
-                KpiCard(label: 'جلسات فعّالة', value: '${toInt(d['active_sessions'])}', icon: Icons.vpn_key, color: Colors.indigo),
+                KpiCard(label: 'جلسات فعّالة', value: '${toInt(d['active_sessions'])}', icon: Icons.vpn_key, color: AppColors.brand),
                 KpiCard(
                   label: 'متصلون الآن',
                   value: '${toInt(d['online_now'])}',
                   sub: 'نشاط خلال آخر 10 دقائق',
                   icon: Icons.wifi,
-                  color: Colors.teal,
+                  color: AppColors.brand,
                 ),
                 KpiCard(
                   label: 'محاولات مشاركة جهاز (7 أيام)',
                   value: '$sharing',
                   icon: Icons.devices_other,
-                  color: sharing > 0 ? Colors.red : Colors.green,
+                  color: sharing > 0 ? AppColors.bad : AppColors.good,
                 ),
                 KpiCard(
                   label: 'إعدادات معدّلة عن الافتراضي',
                   value: '${toInt(d['settings_overridden'])}',
                   icon: Icons.tune,
-                  color: Colors.blueGrey,
+                  color: AppColors.muted,
                 ),
                 KpiCard(
                   label: 'استثناءات: قواطع / أشخاص',
                   value: '${toInt(d['sector_overrides'])} / ${toInt(d['person_overrides'])}',
                   icon: Icons.rule,
-                  color: Colors.purple,
+                  color: AppColors.info,
                 ),
               ]),
               const SectionTitle('المفاتيح العامة'),
@@ -159,7 +153,7 @@ class TechOverviewTab extends StatelessWidget {
                 for (final e in switchLabels.entries)
                   StatusChip(
                     '${e.value}: ${switches[e.key] == true ? 'تعمل' : 'متوقفة'}',
-                    switches[e.key] == true ? Colors.green.shade700 : Colors.red.shade700,
+                    switches[e.key] == true ? AppColors.good : AppColors.bad,
                   ),
               ]),
               const SectionTitle('أوضاع النظام'),
@@ -167,33 +161,36 @@ class TechOverviewTab extends StatelessWidget {
                 child: Column(children: [
                   ListTile(
                     dense: true,
-                    leading: Icon(Icons.chat, color: waLive ? Colors.green : Colors.orange),
+                    leading: Icon(Icons.chat, color: waLive ? AppColors.good : AppColors.warn),
                     title: const Text('واتساب'),
                     subtitle: Text(waLive ? 'إرسال فعلي' : 'تجريبي (لا يُرسل)'),
                   ),
                   ListTile(
                     dense: true,
-                    leading: const Icon(Icons.percent, color: Colors.indigo),
+                    leading: const Icon(Icons.percent, color: AppColors.brand),
                     title: const Text('طريقة احتساب نسبة الزيادة'),
                     subtitle: Text(_gainModes[gain] ?? txt(gain)),
                   ),
                   ListTile(
                     dense: true,
-                    leading: const Icon(Icons.verified_user, color: Colors.indigo),
+                    leading: const Icon(Icons.verified_user, color: AppColors.brand),
                     title: const Text('موافقة الأجهزة الجديدة'),
                     subtitle: Text(d['device_approval_required'] == true ? 'مطلوبة' : 'غير مطلوبة'),
                   ),
                 ]),
               ),
               const SectionTitle('الحسابات حسب الدور'),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(children: [
+              AppCard(
+                padding: const EdgeInsets.all(Gap.md),
+                child: Column(children: [
                     const Row(children: [
-                      Expanded(flex: 3, child: Text('الدور', style: TextStyle(fontWeight: FontWeight.bold))),
-                      Expanded(flex: 2, child: Text('فعّال', style: TextStyle(fontWeight: FontWeight.bold))),
-                      Expanded(flex: 2, child: Text('موقوف', style: TextStyle(fontWeight: FontWeight.bold))),
+                      Expanded(flex: 3, child: Text('الدور', style: TextStyle(fontWeight: FontWeight.w600, color: AppColors.muted))),
+                      Expanded(
+                          flex: 2,
+                          child: Text('فعّال', textAlign: TextAlign.end, style: TextStyle(fontWeight: FontWeight.w600, color: AppColors.muted))),
+                      Expanded(
+                          flex: 2,
+                          child: Text('موقوف', textAlign: TextAlign.end, style: TextStyle(fontWeight: FontWeight.w600, color: AppColors.muted))),
                     ]),
                     const Divider(),
                     if (roles.isEmpty) const EmptyNote('لا توجد حسابات'),
@@ -202,18 +199,24 @@ class TechOverviewTab extends StatelessWidget {
                         padding: const EdgeInsets.symmetric(vertical: 4),
                         child: Row(children: [
                           Expanded(flex: 3, child: Text(txt(r['label'] ?? r['role']))),
-                          Expanded(flex: 2, child: Text('${toInt(r['active'])}', style: const TextStyle(color: Colors.green))),
+                          Expanded(
+                              flex: 2,
+                              child: Text('${toInt(r['active'])}',
+                                  textAlign: TextAlign.end,
+                                  style: const TextStyle(color: AppColors.good, fontFeatures: [FontFeature.tabularFigures()]))),
                           Expanded(
                             flex: 2,
                             child: Text(
                               '${toInt(r['suspended'])}',
-                              style: TextStyle(color: toInt(r['suspended']) > 0 ? Colors.red : Colors.grey),
+                              textAlign: TextAlign.end,
+                              style: TextStyle(
+                                  color: toInt(r['suspended']) > 0 ? AppColors.bad : AppColors.muted,
+                                  fontFeatures: const [FontFeature.tabularFigures()]),
                             ),
                           ),
                         ]),
                       ),
                   ]),
-                ),
               ),
             ],
           ),

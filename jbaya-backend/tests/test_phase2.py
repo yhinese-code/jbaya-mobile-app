@@ -114,7 +114,7 @@ def test_sectors_leaderboard_health(client):
     health = client.get("/command/health", headers=cmd).json()
     assert health["database"]["ok"] and health["tracking"]["last_ping"] and health["whatsapp"]["mode"] == "console"
     ov = client.get("/command/overview", headers=cmd).json()
-    assert ov["online_staff"] >= 1 and ov["target_today"] == settings.COLLECTOR_DAILY_TARGET_IQD
+    assert ov["online_staff"] >= 1 and ov["target_today"] == 2 * settings.COLLECTOR_DAILY_TARGET_IQD   # collector + field supervisor
 
 
 def test_messages(client):

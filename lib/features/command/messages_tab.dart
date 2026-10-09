@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/theme.dart';
 import 'cc_widgets.dart';
 
 /// Send directives to one employee, all collectors, all supervisors, or everyone. Urgent ones pop up on their phone.
@@ -91,7 +92,7 @@ class _MessagesTabState extends State<MessagesTab> {
       final history = _history();
       if (c.maxWidth >= 1000) {
         return Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(Gap.lg),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -103,7 +104,7 @@ class _MessagesTabState extends State<MessagesTab> {
         );
       }
       return ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(Gap.lg),
         children: [SizedBox(height: 460, child: compose), const SizedBox(height: 16), SizedBox(height: 500, child: history)],
       );
     });

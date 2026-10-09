@@ -48,4 +48,6 @@ def apply_schema() -> None:
     sql = (Path(__file__).parent / "schema.sql").read_text(encoding="utf-8")
     with get_conn() as conn:
         with conn.cursor() as cur:
+            # several uvicorn workers start at once: only one applies the schema at a time
+            cur.execute("SELECT pg_advisory_xact_lock(74000)")
             cur.execute(sql)

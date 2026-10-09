@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/format.dart';
+import '../../core/theme.dart';
 
 /// Rotating master code (changes every 10 minutes). Visible to the Command role only.
 /// Every use by a collector is listed below with its reason.
@@ -83,7 +84,7 @@ class _MasterCodeTabState extends State<MasterCodeTab> {
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(Gap.lg),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -111,7 +112,7 @@ class _MasterCodeTabState extends State<MasterCodeTab> {
             ),
           const SizedBox(height: 10),
           if (_uses.isEmpty)
-            const Padding(padding: EdgeInsets.all(20), child: Center(child: Text('لم يُستخدم الرمز الرئيسي خلال هذه الفترة')))
+            const Padding(padding: EdgeInsets.all(Gap.lg), child: Center(child: Text('لم يُستخدم الرمز الرئيسي خلال هذه الفترة')))
           else
             Card(
               child: SingleChildScrollView(
@@ -152,7 +153,7 @@ class _MasterCodeTabState extends State<MasterCodeTab> {
     if (_error != null) {
       return Card(
         color: Colors.red.shade50,
-        child: Padding(padding: const EdgeInsets.all(24), child: Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 16))),
+        child: Padding(padding: const EdgeInsets.all(Gap.xl), child: Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 16))),
       );
     }
     if (_code == null) {

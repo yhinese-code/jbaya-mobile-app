@@ -2,16 +2,17 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/format.dart';
+import '../../core/theme.dart';
 import '../finance/charts.dart';
 import '../hr/hr_tabs.dart' show currentPeriod, recentPeriods;
 import '../shared/ui.dart';
 
 const _statusColors = {
-  'profitable': Color(0xFF2E7D32),
-  'losing': Color(0xFFC62828),
-  'leave': Color(0xFF1565C0),
-  'today': Color(0xFF9E9E9E),
-  'extra': Color(0xFF00897B),
+  'profitable': AppColors.good,
+  'losing': AppColors.bad,
+  'leave': AppColors.info,
+  'today': AppColors.faint,
+  'extra': AppColors.brand,
 };
 const _statusLabels = {
   'profitable': 'غطّى كلفته',
@@ -44,7 +45,7 @@ class DayStrip extends StatelessWidget {
         spacing: 3,
         runSpacing: 3,
         children: days.map((d) {
-          final c = _statusColors[d['status']] ?? Colors.grey;
+          final c = _statusColors[d['status']] ?? AppColors.muted;
           return Tooltip(
             message: _coachStatusLabels[d['status']] ?? '',
             child: Container(
@@ -60,7 +61,7 @@ class DayStrip extends StatelessWidget {
       spacing: 3,
       runSpacing: 3,
       children: days.map((d) {
-        final c = _statusColors[d['status']] ?? Colors.grey;
+        final c = _statusColors[d['status']] ?? AppColors.muted;
         return Tooltip(
           message: '${d['day']}: ${_statusLabels[d['status']] ?? d['status']} | ${d['receipts']} وصل',
           child: Container(
@@ -103,7 +104,7 @@ class _PerformanceMoneyTabState extends State<PerformanceMoneyTab> {
   Widget build(BuildContext context) {
     return Column(children: [
       Padding(
-        padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+        padding: const EdgeInsets.fromLTRB(Gap.md, Gap.md, Gap.md, 0),
         child: Row(children: [
           DropdownButton<String>(
             value: _period,
@@ -113,7 +114,7 @@ class _PerformanceMoneyTabState extends State<PerformanceMoneyTab> {
           const SizedBox(width: 12),
           const Expanded(
             child: Text('كلفة الجابي اليومية = (الراتب + المخصصات) ÷ أيام العمل + عمولته. ما تكسبه الشركة منه = أجور الخدمة + حصتها من مبالغ الماء.',
-                style: TextStyle(color: Colors.grey, fontSize: 12)),
+                style: TextStyle(color: AppColors.muted, fontSize: 12)),
           ),
         ]),
       ),
@@ -127,32 +128,31 @@ class _PerformanceMoneyTabState extends State<PerformanceMoneyTab> {
             return RefreshIndicator(
               onRefresh: reload,
               child: ListView(
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.all(Gap.md),
                 children: [
                   Wrap(spacing: 8, runSpacing: 8, children: [
-                    KpiCard(label: 'ما كسبته الشركة من الجباة', value: formatIqd(asNum(t['earnings'])), icon: Icons.trending_up, color: Colors.green),
-                    KpiCard(label: 'كلفة الجباة (رواتب وعمولات)', value: formatIqd(asNum(t['cost'])), icon: Icons.payments, color: Colors.orange),
+                    KpiCard(label: 'ما كسبته الشركة من الجباة', value: formatIqd(asNum(t['earnings'])), icon: Icons.trending_up, color: AppColors.good),
+                    KpiCard(label: 'كلفة الجباة (رواتب وعمولات)', value: formatIqd(asNum(t['cost'])), icon: Icons.payments, color: AppColors.warn),
                     KpiCard(
                       label: 'الفرق',
                       value: formatIqd(asNum(t['net'])),
                       icon: Icons.balance,
-                      color: (asNum(t['net']) ?? 0) >= 0 ? Colors.teal : Colors.red,
+                      color: (asNum(t['net']) ?? 0) >= 0 ? AppColors.brand : AppColors.bad,
                     ),
                     KpiCard(
                       label: 'جباة متقاعسون',
                       value: '${t['flagged']}',
                       sub: '${d['streak_alert_days']} أيام متتالية أو أكثر دون تغطية الكلفة',
                       icon: Icons.flag,
-                      color: (asNum(t['flagged']) ?? 0) > 0 ? Colors.red : Colors.green,
+                      color: (asNum(t['flagged']) ?? 0) > 0 ? AppColors.bad : AppColors.good,
                     ),
-                    KpiCard(label: 'معدل الفريق اليومي', value: '${d['team_avg_receipts_per_day']} وصل', icon: Icons.groups, color: Colors.blueGrey),
+                    KpiCard(label: 'معدل الفريق اليومي', value: '${d['team_avg_receipts_per_day']} وصل', icon: Icons.groups, color: AppColors.muted),
                   ]),
                   if (company != null) ...[
                     const SectionTitle('نقطة التعادل للشركة (هذا الشهر)'),
-                    Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    AppCard(
+                      padding: const EdgeInsets.all(Gap.md),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           Text('رواتب ومخصصات ${company['staff']} موظفاً: ${formatIqd(asNum(company['monthly_staff_cost']))} شهرياً'),
                           Text('تكسب الشركة بالمتوسط ${formatIqd(asNum(company['net_per_receipt']))} صافياً من كل وصل'),
                           Text('تحتاج ${company['receipts_needed_month']} وصل هذا الشهر (${company['receipts_needed_per_working_day']} في يوم العمل) لتغطية الرواتب',
@@ -163,48 +163,46 @@ class _PerformanceMoneyTabState extends State<PerformanceMoneyTab> {
                                 ? ((asNum(company['receipts_this_month']) ?? 0) / (asNum(company['receipts_needed_month']) ?? 1)).clamp(0.0, 1.0).toDouble()
                                 : 0,
                             minHeight: 10,
-                            color: company['on_track'] == true ? Colors.green : Colors.orange,
+                            color: company['on_track'] == true ? AppColors.good : AppColors.warn,
                           ),
                           const SizedBox(height: 4),
                           Text('حتى الآن ${company['receipts_this_month']} وصلاً بعد ${company['working_days_done']} من ${company['working_days']} يوم عمل '
                               '— ${company['on_track'] == true ? 'ضمن المسار' : 'متأخرون عن المسار'}',
-                              style: TextStyle(color: company['on_track'] == true ? Colors.green : Colors.orange)),
+                              style: TextStyle(color: company['on_track'] == true ? AppColors.good : AppColors.warn)),
                         ]),
-                      ),
                     ),
                   ],
                   const SectionTitle('الجباة: من يغطي كلفته؟'),
                   _legend(),
                   const SizedBox(height: 8),
+                  if (rows.isEmpty) const EmptyState(icon: Icons.groups_outlined, title: 'لا توجد بيانات جباة لهذا الشهر'),
                   ...rows.map((c) {
                     final net = (asNum(c['net']) ?? 0).toDouble();
                     final flag = c['lazy_flag'] == true;
-                    return Card(
-                      color: flag ? Colors.red.withValues(alpha: 0.05) : null,
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    return AppCard(
+                      accent: flag ? AppColors.bad : null,
+                      padding: const EdgeInsets.all(Gap.md),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           Row(children: [
-                            if (flag) const Padding(padding: EdgeInsetsDirectional.only(end: 6), child: Icon(Icons.flag, color: Colors.red)),
+                            if (flag) const Padding(padding: EdgeInsetsDirectional.only(end: 6), child: Icon(Icons.flag, color: AppColors.bad)),
                             Expanded(child: Text('${c['employee_code']} - ${c['full_name']}', style: const TextStyle(fontWeight: FontWeight.bold))),
-                            StatusChip('${c['label']}', flag ? Colors.red : (net >= 0 ? Colors.green : Colors.orange)),
+                            StatusChip('${c['label']}', flag ? AppColors.bad : (net >= 0 ? AppColors.good : AppColors.warn)),
                           ]),
                           const SizedBox(height: 6),
                           Wrap(spacing: 14, runSpacing: 4, children: [
                             Text('كسبت الشركة منه: ${formatIqd(asNum(c['earnings']))}'),
                             Text('كلفته: ${formatIqd(asNum(c['cost']))}'),
-                            Text('الفرق: ${formatIqd(net)}', style: TextStyle(fontWeight: FontWeight.bold, color: net >= 0 ? Colors.green : Colors.red)),
+                            Text('الفرق: ${formatIqd(net)}', style: TextStyle(fontWeight: FontWeight.bold, color: net >= 0 ? AppColors.good : AppColors.bad)),
                             Text('كلفته اليومية: ${formatIqd(asNum(c['daily_fixed_cost']))}'),
                             Text('هدف التعادل: ${c['breakeven_receipts_per_day'] ?? '-'} وصل/يوم'),
                             Text('معدله: ${c['receipts_per_day'] ?? '-'} وصل/يوم'),
                             Text('أيام غطّى فيها كلفته ${c['profitable_days']} | لم يغطِّ ${c['losing_days']}'),
                             if ((asNum(c['losing_streak']) ?? 0) > 0)
-                              Text('متتالية: ${c['losing_streak']}', style: const TextStyle(color: Colors.red)),
+                              Text('متتالية: ${c['losing_streak']}', style: const TextStyle(color: AppColors.bad)),
                           ]),
                           const SizedBox(height: 8),
                           DayStrip(days: (c['days'] as List).cast<Map>()),
                         ]),
-                      ),
                     );
                   }),
                 ],
@@ -233,35 +231,32 @@ class TeamPerformanceTab extends StatelessWidget {
         return RefreshIndicator(
           onRefresh: reload,
           child: ListView(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(Gap.md),
             children: [
               if (banner != null)
                 _TeamBanner(banner)
               else if (laggards > 0)
-                Card(
-                  color: Colors.red.withValues(alpha: 0.08),
-                  child: ListTile(
-                    leading: const Icon(Icons.flag, color: Colors.red),
-                    title: Text(laggards == 1 ? 'لديك موظف متأخر يحتاج متابعة' : 'لديك $laggards موظفين متأخرين يحتاجون متابعة'),
-                    subtitle: const Text('لم يحققوا هدفهم اليومي لعدة أيام متتالية'),
-                  ),
+                NoticeBanner(
+                  tone: Tone.bad,
+                  icon: Icons.flag,
+                  title: laggards == 1 ? 'لديك موظف متأخر يحتاج متابعة' : 'لديك $laggards موظفين متأخرين يحتاجون متابعة',
+                  message: 'لم يحققوا هدفهم اليومي لعدة أيام متتالية',
                 ),
-              Text('معدل الفريق: ${d['team_avg_receipts_per_day']} منزل في اليوم', style: const TextStyle(color: Colors.grey)),
+              Text('معدل الفريق: ${d['team_avg_receipts_per_day']} منزل في اليوم', style: const TextStyle(color: AppColors.muted)),
               const SizedBox(height: 6),
               _legend(),
               const SizedBox(height: 8),
-              if (rows.isEmpty) const Padding(padding: EdgeInsets.all(24), child: Center(child: Text('لا يوجد جباة في فريقك'))),
+              if (rows.isEmpty) const EmptyState(icon: Icons.groups_outlined, title: 'لا يوجد جباة في فريقك'),
               ...rows.map((c) {
                 final target = (asNum(c['daily_target']) ?? 0).toInt();
                 final today = (asNum(c['today_receipts']) ?? 0).toInt();
                 final flag = c['flag'] == true;
-                return Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                return AppCard(
+                  padding: const EdgeInsets.all(Gap.md),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Row(children: [
                         Expanded(child: Text('${c['employee_code']} - ${c['full_name']}', style: const TextStyle(fontWeight: FontWeight.bold))),
-                        StatusChip('${c['label']}', flag ? Colors.red : (c['label'] == 'ضمن الهدف' ? Colors.green : Colors.orange)),
+                        StatusChip('${c['label']}', flag ? AppColors.bad : (c['label'] == 'ضمن الهدف' ? AppColors.good : AppColors.warn)),
                       ]),
                       const SizedBox(height: 6),
                       Text('اليوم: $today من ${housesAr(target)}${(asNum(c['remaining_today']) ?? 0) > 0 ? ' — يحتاج ${housesAr((asNum(c['remaining_today']) ?? 0).toInt())} أخرى' : ' — حقق الهدف'}'),
@@ -269,15 +264,14 @@ class TeamPerformanceTab extends StatelessWidget {
                       LinearProgressIndicator(
                         value: target > 0 ? (today / target).clamp(0.0, 1.0).toDouble() : 0,
                         minHeight: 8,
-                        color: today >= target ? Colors.green : Colors.orange,
+                        color: today >= target ? AppColors.good : AppColors.warn,
                       ),
                       const SizedBox(height: 6),
                       Text('معدله هذا الشهر ${c['receipts_per_day'] ?? '-'} منزل/يوم | أيام جيدة ${c['good_days']} | أيام ضعيفة ${c['weak_days']}',
-                          style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                          style: const TextStyle(fontSize: 12, color: AppColors.muted)),
                       const SizedBox(height: 6),
                       DayStrip(days: (c['days'] as List).cast<Map>()),
                     ]),
-                  ),
                 );
               }),
             ],
@@ -296,46 +290,24 @@ class _TeamBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final level = '${banner['level']}';
-    final Color color;
+    final Tone tone;
     final IconData icon;
     switch (level) {
       case 'bad':
-        color = const Color(0xFFC62828);
+        tone = Tone.bad;
         icon = Icons.report;
         break;
       case 'warn':
-        color = const Color(0xFFEF6C00);
+        tone = Tone.warn;
         icon = Icons.warning_amber_rounded;
         break;
       default:
-        color = const Color(0xFF2E7D32);
+        tone = Tone.good;
         icon = Icons.verified;
     }
     final title = '${banner['title'] ?? (level == 'bad' ? 'فريقك دون المستوى المطلوب' : '')}';
     final text = banner['text'] == null ? '' : '${banner['text']}';
-    return Card(
-      color: color.withValues(alpha: level == 'bad' ? 0.14 : 0.08),
-      shape: RoundedRectangleBorder(
-        side: BorderSide(color: color, width: level == 'bad' ? 2 : 1),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Icon(icon, color: color, size: 36),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(title, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color)),
-              if (text.isNotEmpty) ...[
-                const SizedBox(height: 4),
-                Text(text, style: const TextStyle(fontSize: 14)),
-              ],
-            ]),
-          ),
-        ]),
-      ),
-    );
+    return NoticeBanner(tone: tone, icon: icon, title: title, message: text.isEmpty ? null : text);
   }
 }
 
@@ -370,10 +342,10 @@ class CoachCardState extends State<CoachCard> {
   }
 
   static const _levelColors = {
-    'good': Color(0xFF2E7D32),
-    'info': Color(0xFF1565C0),
-    'warn': Color(0xFFEF6C00),
-    'bad': Color(0xFFC62828),
+    'good': AppColors.good,
+    'info': AppColors.info,
+    'warn': AppColors.warn,
+    'bad': AppColors.bad,
   };
 
   @override
@@ -385,15 +357,15 @@ class CoachCardState extends State<CoachCard> {
     final IconData icon;
     switch (status) {
       case 'underperforming':
-        color = const Color(0xFFC62828);
+        color = AppColors.bad;
         icon = Icons.error;
         break;
       case 'behind':
-        color = const Color(0xFFF9A825);
+        color = AppColors.warn;
         icon = Icons.trending_down;
         break;
       default:
-        color = const Color(0xFF2E7D32);
+        color = AppColors.good;
         icon = Icons.check_circle;
     }
     final msgs = (c['messages'] is List ? c['messages'] as List : const []).whereType<Map>().toList();
@@ -412,12 +384,12 @@ class CoachCardState extends State<CoachCard> {
               Expanded(
                 child: Text('${c['title'] ?? ''}', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: color)),
               ),
-              Icon(_open ? Icons.expand_less : Icons.expand_more, color: Colors.grey),
+              Icon(_open ? Icons.expand_less : Icons.expand_more, color: AppColors.muted),
             ]),
             if (_open) ...[
               ...msgs.map((m) => Padding(
                     padding: const EdgeInsets.only(top: 4),
-                    child: Text('• ${m['text'] ?? ''}', style: TextStyle(color: _levelColors[m['level']] ?? Colors.black87, fontSize: 13)),
+                    child: Text('• ${m['text'] ?? ''}', style: TextStyle(color: _levelColors[m['level']] ?? AppColors.ink, fontSize: 13)),
                   )),
               if (days.isNotEmpty) ...[
                 const SizedBox(height: 8),

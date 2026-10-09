@@ -868,3 +868,46 @@ CREATE TABLE IF NOT EXISTS callback_audits (
     called_at       TIMESTAMPTZ
 );
 CREATE INDEX IF NOT EXISTS idx_callbacks_day ON callback_audits(assigned_date, status);
+
+-- ---------------------------------------------------------------
+-- Phase 6: the citizen messages us first (free WhatsApp window), offline field work
+
+-- every message citizens send to the company number (from Meta's webhook)
+CREATE TABLE IF NOT EXISTS whatsapp_inbound (
+    id              BIGSERIAL PRIMARY KEY,
+    wa_message_id   VARCHAR(200) UNIQUE,
+    phone           VARCHAR(20) NOT NULL,
+    profile_name    TEXT,
+    msg_type        VARCHAR(30),
+    body            TEXT,
+    handled         JSONB NOT NULL DEFAULT '[]'::jsonb,
+    received_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+-- when the citizen actually sent it (Meta's timestamp): the free 24h window counts from here, not from a late retry
+ALTER TABLE whatsapp_inbound ADD COLUMN IF NOT EXISTS sent_at TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS idx_wa_inbound_phone ON whatsapp_inbound(phone, received_at DESC);
+
+-- a code we will send as soon as the citizen messages us
+CREATE TABLE IF NOT EXISTS citizen_code_waits (
+    id              SERIAL PRIMARY KEY,
+    purpose         VARCHAR(20) NOT NULL CHECK (purpose IN ('registration','payment')),
+    property_id     INT NOT NULL REFERENCES properties(id),
+    bill_id         INT REFERENCES bills(id),
+    phone           VARCHAR(20) NOT NULL,
+    created_by      INT NOT NULL REFERENCES employees(id),
+    status          VARCHAR(20) NOT NULL DEFAULT 'waiting' CHECK (status IN ('waiting','sent','cancelled')),
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    expires_at      TIMESTAMPTZ NOT NULL,
+    sent_at         TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_code_waits_phone ON citizen_code_waits(phone, status, expires_at);
+
+-- offline work from the field app is synced once, whatever happens to the connection
+CREATE TABLE IF NOT EXISTS offline_submissions (
+    client_id       VARCHAR(64) PRIMARY KEY,
+    employee_id     INT NOT NULL REFERENCES employees(id),
+    kind            VARCHAR(20) NOT NULL CHECK (kind IN ('registration','reading')),
+    captured_at     TIMESTAMPTZ NOT NULL,
+    synced_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    result          JSONB NOT NULL
+);

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../core/format.dart';
 import '../../core/session.dart';
+import '../../core/theme.dart';
 import '../finance/cash_tabs.dart';
 import '../finance/charts.dart';
 import '../finance/fraud_tabs.dart';
@@ -13,8 +14,6 @@ import '../performance/performance_tabs.dart';
 import '../shared/ui.dart';
 import 'owner_settings_tab.dart';
 import 'owner_today_tab.dart';
-
-const _ownerColor = Color(0xFF263238);
 
 /// The owner: his day, profit, breakeven, approvals of large write-offs / corrections / 35% settlements, his own
 /// settings, and everything finance did. Each tab follows the tech panel's permission matrix (owner.* features).
@@ -42,11 +41,10 @@ class OwnerPortalScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return PermittedTabs(
       tabs: _tabs,
-      indicator: Colors.amber,
-      appBar: (bar) => AppBar(
-        title: Text('لوحة المالك - ${Session.instance.fullName}', style: const TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: _ownerColor,
-        foregroundColor: Colors.white,
+      appBar: (bar) => portalAppBar(
+        title: 'لوحة المالك',
+        subtitle: Session.instance.fullName,
+        color: AppColors.owner,
         actions: const [LogoutButton()],
         bottom: bar,
       ),
@@ -74,19 +72,17 @@ class OwnerSummaryTab extends StatelessWidget {
         return RefreshIndicator(
           onRefresh: reload,
           child: ListView(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(Gap.md),
             children: [
-              ...alerts.map((a) => Card(
-                    color: Colors.orange.withValues(alpha: 0.08),
-                    child: ListTile(dense: true, leading: const Icon(Icons.notification_important, color: Colors.orange), title: Text(a)),
-                  )),
+              ...alerts.map((a) => NoticeBanner(tone: Tone.warn, icon: Icons.notification_important, title: a)),
+              if (alerts.isNotEmpty) const SizedBox(height: Gap.sm),
               Wrap(spacing: 8, runSpacing: 8, children: [
                 KpiCard(
                   label: 'ربح هذا الشهر حتى الآن',
                   value: formatIqd(profit),
                   sub: 'دخل ${compactIqd((asNum(cur['income']) ?? 0).toDouble())} - كلف ${compactIqd((asNum(cur['costs']) ?? 0).toDouble())}',
                   icon: Icons.savings,
-                  color: profit >= 0 ? Colors.green : Colors.red,
+                  color: profit >= 0 ? AppColors.good : AppColors.bad,
                 ),
                 KpiCard(
                   label: 'دخل الشركة هذا الشهر',
@@ -94,32 +90,31 @@ class OwnerSummaryTab extends StatelessWidget {
                   sub: 'أجور ${compactIqd((asNum(cur['fees']) ?? 0).toDouble())} + حصة ${compactIqd((asNum(cur['share']) ?? 0).toDouble())} (${d['company_share_pct']}%)'
                       ' + زيادة ${compactIqd((asNum(cur['gain_share']) ?? 0).toDouble())}',
                   icon: Icons.account_balance_wallet,
-                  color: Colors.indigo,
+                  color: AppColors.brand,
                 ),
                 KpiCard(label: 'نقد الشركة الآن', value: formatIqd(asNum(cash['company_cash'])), sub: 'بعد أمانة الدائرة والضرائب',
-                    icon: Icons.account_balance, color: Colors.teal),
-                KpiCard(label: 'أمانة دائرة الماء المحفوظة', value: formatIqd(asNum(cash['government_trust'])), icon: Icons.lock, color: Colors.deepOrange),
+                    icon: Icons.account_balance, color: AppColors.brand),
+                KpiCard(label: 'أمانة دائرة الماء المحفوظة', value: formatIqd(asNum(cash['government_trust'])), icon: Icons.lock, color: AppColors.warn),
                 KpiCard(label: 'نقد خارج المقر', value: formatIqd(asNum(cash['outside_hq'])), sub: 'لدى الجباة والمشرفين',
-                    icon: Icons.directions_walk, color: Colors.brown),
+                    icon: Icons.directions_walk, color: AppColors.muted),
                 KpiCard(
                   label: 'نقطة التعادل (وصولات الشهر)',
                   value: '${be['receipts_this_month']} / ${be['receipts_needed_month'] ?? '-'}',
                   sub: be['on_track'] == true ? 'ضمن المسار' : 'متأخرون عن المسار',
                   icon: Icons.flag,
-                  color: be['on_track'] == true ? Colors.green : Colors.orange,
+                  color: be['on_track'] == true ? AppColors.good : AppColors.warn,
                 ),
               ]),
               const SectionTitle('آخر 6 أشهر'),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(children: [
+              AppCard(
+                padding: const EdgeInsets.all(Gap.md),
+                child: Column(children: [
                     SimpleLineChart(
                       height: 220,
                       labels: months.map((m) => '${m['period']}').toList(),
                       series: [
-                        LineSeries('الدخل', months.map((m) => (asNum(m['income']) ?? 0).toDouble()).toList(), Colors.indigo),
-                        LineSeries('الكلف', months.map((m) => (asNum(m['costs']) ?? 0).toDouble()).toList(), Colors.orange),
+                        LineSeries('الدخل', months.map((m) => (asNum(m['income']) ?? 0).toDouble()).toList(), AppColors.brand),
+                        LineSeries('الكلف', months.map((m) => (asNum(m['costs']) ?? 0).toDouble()).toList(), AppColors.warn),
                       ],
                     ),
                     const SizedBox(height: 8),
@@ -127,17 +122,19 @@ class OwnerSummaryTab extends StatelessWidget {
                       height: 160,
                       labels: months.map((m) => '${m['period']}'.substring(5)).toList(),
                       values: months.map((m) => (asNum(m['profit']) ?? 0).toDouble().abs()).toList(),
-                      colors: months.map((m) => (asNum(m['profit']) ?? 0) >= 0 ? Colors.green : Colors.red).toList(),
+                      colors: months.map((m) => (asNum(m['profit']) ?? 0) >= 0 ? AppColors.good : AppColors.bad).toList(),
                       valueName: 'الربح (الأحمر خسارة)',
                     ),
                   ]),
-                ),
               ),
               const SectionTitle('دخل الشركة حسب المصدر'),
               Card(
                 child: SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: DataTable(
+                    headingRowColor: WidgetStateProperty.all(AppColors.paper),
+                    headingTextStyle: const TextStyle(fontFamily: AppTheme.fontFamily, fontWeight: FontWeight.w600, color: AppColors.muted, fontSize: 13),
+                    dataTextStyle: const TextStyle(fontFamily: AppTheme.fontFamily, color: AppColors.ink, fontSize: 13, fontFeatures: [FontFeature.tabularFigures()]),
                     columnSpacing: 20,
                     headingRowHeight: 40,
                     dataRowMinHeight: 36,
@@ -157,21 +154,20 @@ class OwnerSummaryTab extends StatelessWidget {
                           DataCell(Text(compactIqd((asNum(m['fees']) ?? 0).toDouble()))),
                           DataCell(Text(compactIqd((asNum(m['share']) ?? 0).toDouble()))),
                           DataCell(Text(compactIqd((asNum(m['gain_share']) ?? 0).toDouble()),
-                              style: const TextStyle(color: Colors.indigo, fontWeight: FontWeight.bold))),
+                              style: const TextStyle(color: AppColors.brand, fontWeight: FontWeight.bold))),
                           DataCell(Text(compactIqd((asNum(m['income']) ?? 0).toDouble()))),
                           DataCell(Text(compactIqd((asNum(m['profit']) ?? 0).toDouble()),
-                              style: TextStyle(color: (asNum(m['profit']) ?? 0) >= 0 ? Colors.green : Colors.red))),
+                              style: TextStyle(color: (asNum(m['profit']) ?? 0) >= 0 ? AppColors.good : AppColors.bad))),
                         ]),
                     ],
                   ),
                 ),
               ),
               const SectionTitle('القواطع: دخل الشركة هذا الشهر'),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: HBarList(
-                    color: Colors.indigo,
+              AppCard(
+                padding: const EdgeInsets.all(Gap.md),
+                child: HBarList(
+                    color: AppColors.brand,
                     rows: sectors
                         .map((s) => (
                               label: '${s['name']}',
@@ -180,12 +176,11 @@ class OwnerSummaryTab extends StatelessWidget {
                             ))
                         .toList(),
                   ),
-                ),
               ),
               Padding(
                 padding: const EdgeInsets.all(8),
                 child: Text('الشطب والتصحيحات فوق ${formatIqd(asNum(d['approval_threshold']))} تنتظر موافقتك.',
-                    style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                    style: const TextStyle(color: AppColors.muted, fontSize: 12)),
               ),
             ],
           ),
@@ -232,40 +227,41 @@ class _ApprovalsTabState extends State<ApprovalsTab> {
         return RefreshIndicator(
           onRefresh: reload,
           child: ListView(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(Gap.md),
             children: [
-              if (list.isEmpty) const Padding(padding: EdgeInsets.all(32), child: Center(child: Text('لا طلبات بانتظار موافقتك'))),
-              ...list.map((a) => Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              if (list.isEmpty) const EmptyState(icon: Icons.task_alt, title: 'لا طلبات بانتظار موافقتك', message: 'الشطب والتصحيحات الكبيرة التي تحتاج موافقتك ستظهر هنا'),
+              ...list.map((a) => AppCard(
+                    padding: const EdgeInsets.all(Gap.md),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         Row(children: [
                           StatusChip(_kindLabels['${a['kind']}'] ?? '${a['kind']}',
-                              a['kind'] == 'gain_share' ? Colors.indigo : Colors.blueGrey),
-                          const SizedBox(width: 8),
-                          Expanded(child: Text('${a['title'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.bold))),
-                          Text(formatIqd(asNum(a['amount'])), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                              a['kind'] == 'gain_share' ? AppColors.info : AppColors.muted),
+                          const Spacer(),
+                          Text(formatIqd(asNum(a['amount'])),
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, fontFeatures: [FontFeature.tabularFigures()])),
                         ]),
-                        if (a['detail'] != null) Text('${a['detail']}', style: const TextStyle(color: Colors.grey)),
+                        const SizedBox(height: Gap.xs),
+                        Text('${a['title'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                        if (a['detail'] != null) Text('${a['detail']}', style: const TextStyle(color: AppColors.muted)),
                         if (a['kind'] == 'gain_share')
                           const Text('موافقتك تقيّد هذا المبلغ دخلاً للشركة (حصة الزيادة فوق إيرادات 2025).',
-                              style: TextStyle(fontSize: 12, color: Colors.indigo)),
+                              style: TextStyle(fontSize: 12, color: AppColors.brand)),
                         Text('${formatDate(a['at'])}${a['requested_by'] != null ? ' | طلبه ${a['requested_by']}' : ''}',
-                            style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                        Wrap(spacing: 8, children: [
+                            style: const TextStyle(fontSize: 12, color: AppColors.muted)),
+                        const SizedBox(height: Gap.sm),
+                        Wrap(spacing: Gap.sm, runSpacing: Gap.sm, children: [
                           ElevatedButton(
                             onPressed: () => _decide(a, 'approve'),
-                            style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
+                            style: ElevatedButton.styleFrom(backgroundColor: AppColors.good, foregroundColor: Colors.white),
                             child: const Text('موافقة'),
                           ),
                           OutlinedButton(
                             onPressed: () => _decide(a, 'reject'),
-                            style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
+                            style: OutlinedButton.styleFrom(foregroundColor: AppColors.bad),
                             child: const Text('رفض'),
                           ),
                         ]),
                       ]),
-                    ),
                   )),
             ],
           ),
@@ -291,7 +287,9 @@ class _ProfitTabState extends State<ProfitTab> {
         padding: const EdgeInsets.symmetric(vertical: 4),
         child: Row(children: [
           Expanded(child: Text(label, style: TextStyle(fontWeight: bold ? FontWeight.bold : null))),
-          Text(formatIqd(asNum(amount)), style: TextStyle(fontWeight: bold ? FontWeight.bold : null, color: color)),
+          Text(formatIqd(asNum(amount)),
+              textAlign: TextAlign.end,
+              style: TextStyle(fontWeight: bold ? FontWeight.bold : null, color: color, fontFeatures: const [FontFeature.tabularFigures()])),
         ]),
       );
 
@@ -305,7 +303,7 @@ class _ProfitTabState extends State<ProfitTab> {
         final profit = (asNum(d['profit']) ?? 0).toDouble();
         final trust = d['trust'] as Map;
         return ListView(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(Gap.md),
           children: [
             Align(
               alignment: AlignmentDirectional.centerStart,
@@ -315,37 +313,32 @@ class _ProfitTabState extends State<ProfitTab> {
                 onChanged: (v) => setState(() => _period = v ?? _period),
               ),
             ),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            AppCard(
+              padding: const EdgeInsets.all(Gap.lg),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                   Text('الربح والخسارة - $_period', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                   const Divider(),
-                  const Text('ما دخل للشركة', style: TextStyle(color: Colors.teal, fontWeight: FontWeight.bold)),
-                  if (income.isEmpty) const Text('لا شيء', style: TextStyle(color: Colors.grey)),
+                  const Text('ما دخل للشركة', style: TextStyle(color: AppColors.brand, fontWeight: FontWeight.bold)),
+                  if (income.isEmpty) const Text('لا شيء', style: TextStyle(color: AppColors.muted)),
                   ...income.map((r) => _line('${r['name']}', r['amount'])),
                   _line('المجموع', d['total_income'], bold: true),
                   const Divider(),
-                  const Text('ما صرفته الشركة', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
-                  if (costs.isEmpty) const Text('لا شيء', style: TextStyle(color: Colors.grey)),
+                  const Text('ما صرفته الشركة', style: TextStyle(color: AppColors.bad, fontWeight: FontWeight.bold)),
+                  if (costs.isEmpty) const Text('لا شيء', style: TextStyle(color: AppColors.muted)),
                   ...costs.map((r) => _line('${r['name']}', r['amount'])),
                   _line('المجموع', d['total_costs'], bold: true),
                   const Divider(thickness: 2),
-                  _line(profit >= 0 ? 'الربح' : 'الخسارة', profit, bold: true, color: profit >= 0 ? Colors.green : Colors.red),
+                  _line(profit >= 0 ? 'الربح' : 'الخسارة', profit, bold: true, color: profit >= 0 ? AppColors.good : AppColors.bad),
                 ]),
-              ),
             ),
-            Card(
-              color: Colors.deepOrange.withValues(alpha: 0.05),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            AppCard(
+              accent: AppColors.warn,
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                   const Text('أمانة دائرة الماء (ليست ضمن الربح)', style: TextStyle(fontWeight: FontWeight.bold)),
                   _line('حُصّلت هذا الشهر', trust['collected']),
                   _line('سُلّمت هذا الشهر', trust['handed_over']),
-                  Text('${trust['note']}', style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                  Text('${trust['note']}', style: const TextStyle(color: AppColors.muted, fontSize: 12)),
                 ]),
-              ),
             ),
           ],
         );
@@ -378,7 +371,7 @@ class _FinanceLogTabState extends State<FinanceLogTab> {
   Widget build(BuildContext context) {
     return Column(children: [
       Padding(
-        padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+        padding: const EdgeInsets.fromLTRB(Gap.md, Gap.md, Gap.md, 0),
         child: SegmentedButton<int>(
           segments: const [
             ButtonSegment(value: 1, label: Text('اليوم')),
@@ -394,11 +387,11 @@ class _FinanceLogTabState extends State<FinanceLogTab> {
           path: '/owner/finance-log?days=$_days',
           builder: (context, data, reload) {
             final list = (data as List).cast<Map>();
-            if (list.isEmpty) return const Center(child: Text('لا إجراءات في هذه الفترة'));
+            if (list.isEmpty) return const EmptyState(icon: Icons.history_edu, title: 'لا إجراءات للمالية في هذه الفترة', message: 'جرّب فترة أطول');
             return RefreshIndicator(
               onRefresh: reload,
               child: ListView(
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.all(Gap.md),
                 children: list.map((r) {
                   final details = (r['details'] as Map?) ?? {};
                   return Card(

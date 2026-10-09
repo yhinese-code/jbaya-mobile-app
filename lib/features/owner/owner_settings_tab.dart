@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/format.dart';
+import '../../core/theme.dart';
 import '../shared/ui.dart';
 
 const _weekdays = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
@@ -82,21 +83,20 @@ class _OwnerSettingsTabState extends State<OwnerSettingsTab> {
         return RefreshIndicator(
           onRefresh: reload,
           child: ListView(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(Gap.md),
             children: [
-              Card(
-                color: Colors.blueGrey.withValues(alpha: 0.08),
-                child: const ListTile(
-                  leading: Icon(Icons.info_outline),
-                  title: Text('إعداداتك'),
-                  subtitle: Text('هذه إعدادات العمل التي تستطيع تغييرها بنفسك. الإدارة التقنية هي التي تقرر أي الإعدادات تظهر هنا؛ '
-                      'إذا احتجت تغيير إعداد غير موجود في القائمة اطلبه منها. كل تغيير يُسجّل باسمك.'),
-                ),
+              const NoticeBanner(
+                tone: Tone.neutral,
+                icon: Icons.info_outline,
+                title: 'إعداداتك',
+                message: 'هذه إعدادات العمل التي تستطيع تغييرها بنفسك. الإدارة التقنية هي التي تقرر أي الإعدادات تظهر هنا؛ '
+                    'إذا احتجت تغيير إعداد غير موجود في القائمة اطلبه منها. كل تغيير يُسجّل باسمك.',
               ),
               if (list.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.all(32),
-                  child: Center(child: Text('لم تسمح الإدارة التقنية بأي إعداد لك بعد')),
+                const EmptyState(
+                  icon: Icons.tune,
+                  title: 'لم تسمح الإدارة التقنية بأي إعداد لك بعد',
+                  message: 'اطلب من الإدارة التقنية إظهار الإعدادات التي تحتاجها هنا',
                 ),
               for (final g in groups.entries) ...[
                 SectionTitle(g.key),
@@ -124,16 +124,16 @@ class _OwnerSettingsTabState extends State<OwnerSettingsTab> {
         Text(
           'الافتراضي: ${_display(s, s['default'])}'
           '${overridden && s['updated_at'] != null ? ' | عُدّل ${formatDate(s['updated_at'])}' : ''}',
-          style: const TextStyle(fontSize: 11, color: Colors.grey),
+          style: const TextStyle(fontSize: 11, color: AppColors.muted),
         ),
       ]),
       trailing: Row(mainAxisSize: MainAxisSize.min, children: [
         ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 180),
+          constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width < 420 ? 110 : 180),
           child: Text(
             _display(s, s['value']),
             textAlign: TextAlign.end,
-            style: TextStyle(fontWeight: FontWeight.bold, color: overridden ? Colors.indigo : null),
+            style: TextStyle(fontWeight: FontWeight.bold, color: overridden ? AppColors.brand : null),
             overflow: TextOverflow.ellipsis,
             maxLines: 2,
           ),
@@ -365,16 +365,15 @@ class _SettingDialogState extends State<_SettingDialog> {
         width: 420,
         child: SingleChildScrollView(
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            if (help.isNotEmpty) Text(help, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+            if (help.isNotEmpty) Text(help, style: const TextStyle(fontSize: 12, color: AppColors.muted)),
             Text('الحالي: ${_display(s, s['value'])} | الافتراضي: ${_display(s, s['default'])}',
-                style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                style: const TextStyle(fontSize: 12, color: AppColors.muted)),
             const SizedBox(height: 12),
             _editor(),
-            if (_error != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Text(_error!, style: const TextStyle(color: Colors.red)),
-              ),
+            if (_error != null) ...[
+              const SizedBox(height: Gap.sm),
+              NoticeBanner(tone: Tone.bad, title: _error!),
+            ],
             const SizedBox(height: 12),
             TextField(
               controller: _note,

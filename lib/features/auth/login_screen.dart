@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../core/device_identity.dart';
 import '../../core/session.dart';
+import '../../core/theme.dart';
 import '../collector/collector_home.dart';
 import '../command/command_screen.dart';
 import '../finance/finance_portal_screen.dart';
@@ -31,6 +32,7 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _loading = false;
   bool _obscure = true;
   String? _error;
+  String? _notice; // why the previous session ended (shown until the next login attempt)
 
   // a new device waiting for the tech panel: retried automatically every 15 seconds
   String? _pending;
@@ -41,7 +43,7 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   void initState() {
     super.initState();
-    _error = widget.notice;
+    _notice = widget.notice;
     DeviceIdentity.id().then((v) {
       if (mounted) setState(() => _deviceId = v);
     });
@@ -57,7 +59,10 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _login({bool silent = false}) async {
     if (_codeController.text.trim().isEmpty || _passwordController.text.isEmpty) {
-      setState(() => _error = 'يرجى إدخال رقم الموظف وكلمة المرور');
+      setState(() {
+        _notice = null;
+        _error = 'يرجى إدخال رقم الموظف وكلمة المرور';
+      });
       return;
     }
     if (_inFlight) return;
@@ -66,6 +71,7 @@ class _LoginScreenState extends State<LoginScreen> {
       setState(() {
         _loading = true;
         _error = null;
+        _notice = null;
       });
     }
     try {
@@ -87,7 +93,7 @@ class _LoginScreenState extends State<LoginScreen> {
       _finish(res);
     } on ApiException catch (e) {
       if (!mounted) return;
-      if (silent && _pending != null && e.statusCode == 0) return;   // no network for a moment: keep waiting
+      if (silent && _pending != null && e.statusCode <= 0) return;   // no network for a moment: keep waiting
       _retry?.cancel();
       _retry = null;
       setState(() {
@@ -147,85 +153,39 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFE8ECEF),
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Container(
-            constraints: const BoxConstraints(maxWidth: 440),
-            padding: const EdgeInsets.all(28),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 12)],
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Icon(Icons.map, size: 50, color: Color(0xFF004D40)),
-                const SizedBox(height: 16),
-                const Text(
-                  'منظومة جباية بغداد المركزية',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF004D40)),
-                ),
-                const SizedBox(height: 24),
-                if (_pending != null) ..._pendingStep() else ...[
-                TextField(
-                  controller: _codeController,
-                  textInputAction: TextInputAction.next,
-                  decoration: const InputDecoration(
-                    labelText: 'رقم الموظف (ID)',
-                    hintText: 'JB-0492',
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.badge),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: _passwordController,
-                  obscureText: _obscure,
-                  onSubmitted: (_) => _login(),
-                  decoration: InputDecoration(
-                    labelText: 'كلمة المرور',
-                    border: const OutlineInputBorder(),
-                    prefixIcon: const Icon(Icons.lock),
-                    suffixIcon: IconButton(
-                      icon: Icon(_obscure ? Icons.visibility : Icons.visibility_off),
-                      onPressed: () => setState(() => _obscure = !_obscure),
+      backgroundColor: AppColors.paper,
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(Gap.lg),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _brand(),
+                  const SizedBox(height: Gap.xl),
+                  Container(
+                    padding: const EdgeInsets.all(Gap.xl),
+                    decoration: BoxDecoration(
+                      color: AppColors.card,
+                      borderRadius: BorderRadius.circular(Gap.radius + 4),
+                      border: Border.all(color: AppColors.border),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: _pending != null ? _pendingStep() : _form(),
                     ),
                   ),
-                ),
-                if (_error != null) ...[
-                  const SizedBox(height: 12),
-                  Text(_error!, style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+                  if (_deviceId != null && _pending == null) ...[
+                    const SizedBox(height: Gap.md),
+                    Text('رمز هذا الجهاز: ${_deviceId!.substring(0, 12)}',
+                        textAlign: TextAlign.center, style: const TextStyle(color: AppColors.faint, fontSize: 11)),
+                  ],
                 ],
-                const SizedBox(height: 20),
-                ElevatedButton(
-                  onPressed: _loading ? null : _login,
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    backgroundColor: const Color(0xFF004D40),
-                    foregroundColor: Colors.white,
-                  ),
-                  child: _loading
-                      ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                      : const Text('تسجيل الدخول', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                ),
-                const SizedBox(height: 10),
-                const Text(
-                  'يتم تحديد البوابة والقاطع تلقائياً حسب صلاحيات حسابك',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.grey, fontSize: 12),
-                ),
-                if (_deviceId != null) ...[
-                  const SizedBox(height: 6),
-                  Text('رمز هذا الجهاز: ${_deviceId!.substring(0, 12)}',
-                      textAlign: TextAlign.center, style: const TextStyle(color: Colors.grey, fontSize: 11)),
-                ],
-                ],
-              ],
+              ),
             ),
           ),
         ),
@@ -233,41 +193,134 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  List<Widget> _pendingStep() {
-    return [
+  Widget _brand() {
+    return Column(children: [
       Container(
-        padding: const EdgeInsets.all(14),
+        width: 72,
+        height: 72,
         decoration: BoxDecoration(
-          color: Colors.amber.shade50,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.amber.shade700),
+          color: AppColors.brand,
+          borderRadius: BorderRadius.circular(20),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(children: [
-              Icon(Icons.phonelink_lock, color: Colors.amber.shade900),
-              const SizedBox(width: 8),
-              const Expanded(child: Text('جهاز جديد بانتظار الاعتماد', style: TextStyle(fontWeight: FontWeight.bold))),
-            ]),
-            const SizedBox(height: 8),
-            Text(_pending!),
-            const SizedBox(height: 8),
-            Text('أخبر الإدارة التقنية برقمك ${_codeController.text.trim().toUpperCase()} '
-                'ورمز الجهاز ${_deviceId == null ? '' : _deviceId!.substring(0, 12)}. '
-                'سيتم الدخول تلقائياً بعد الموافقة.', style: const TextStyle(fontSize: 13)),
-          ],
+        child: const Icon(Icons.water_drop_outlined, size: 40, color: Colors.white),
+      ),
+      const SizedBox(height: Gap.md),
+      const Text(
+        'منظومة جباية بغداد',
+        textAlign: TextAlign.center,
+        style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: AppColors.ink),
+      ),
+      const SizedBox(height: Gap.xs),
+      const Text('تسجيل دخول الموظفين', textAlign: TextAlign.center, style: TextStyle(color: AppColors.muted)),
+    ]);
+  }
+
+  List<Widget> _form() {
+    return [
+      if (_notice != null) ...[
+        NoticeBanner(tone: Tone.warn, icon: Icons.info_outline, title: 'انتهت الجلسة', message: _notice),
+        const SizedBox(height: Gap.md),
+      ],
+      TextField(
+        controller: _codeController,
+        textInputAction: TextInputAction.next,
+        decoration: const InputDecoration(
+          labelText: 'رقم الموظف (ID)',
+          hintText: 'JB-0492',
+          prefixIcon: Icon(Icons.badge_outlined),
         ),
       ),
-      const SizedBox(height: 16),
-      const LinearProgressIndicator(),
-      const SizedBox(height: 16),
-      ElevatedButton.icon(
+      const SizedBox(height: Gap.lg),
+      TextField(
+        controller: _passwordController,
+        obscureText: _obscure,
+        onSubmitted: (_) => _login(),
+        decoration: InputDecoration(
+          labelText: 'كلمة المرور',
+          prefixIcon: const Icon(Icons.lock_outline),
+          suffixIcon: IconButton(
+            tooltip: _obscure ? 'إظهار' : 'إخفاء',
+            icon: Icon(_obscure ? Icons.visibility : Icons.visibility_off),
+            onPressed: () => setState(() => _obscure = !_obscure),
+          ),
+        ),
+      ),
+      if (_error != null) ...[
+        const SizedBox(height: Gap.md),
+        NoticeBanner(tone: Tone.bad, title: _error!),
+      ],
+      const SizedBox(height: Gap.xl),
+      FilledButton(
         onPressed: _loading ? null : _login,
+        style: FilledButton.styleFrom(
+          minimumSize: const Size.fromHeight(52),
+          textStyle: const TextStyle(fontFamily: AppTheme.fontFamily, fontSize: 16, fontWeight: FontWeight.w700),
+        ),
+        child: _loading
+            ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+            : const Text('تسجيل الدخول'),
+      ),
+      const SizedBox(height: Gap.md),
+      const Text(
+        'يتم تحديد البوابة والقاطع تلقائياً حسب صلاحيات حسابك',
+        textAlign: TextAlign.center,
+        style: TextStyle(color: AppColors.muted, fontSize: 12),
+      ),
+    ];
+  }
+
+  List<Widget> _pendingStep() {
+    final device = _deviceId == null ? '' : _deviceId!.substring(0, 12);
+    return [
+      NoticeBanner(
+        tone: Tone.warn,
+        icon: Icons.phonelink_lock,
+        title: 'جهاز جديد بانتظار الاعتماد',
+        message: _pending,
+      ),
+      const SizedBox(height: Gap.md),
+      Text('أخبر الإدارة التقنية برقمك وبرمز الجهاز. سيتم الدخول تلقائياً بعد الموافقة.',
+          style: const TextStyle(color: AppColors.muted)),
+      const SizedBox(height: Gap.md),
+      _idRow('رقم الموظف', _codeController.text.trim().toUpperCase()),
+      _idRow('رمز الجهاز', device),
+      const SizedBox(height: Gap.lg),
+      const ClipRRect(
+        borderRadius: BorderRadius.all(Radius.circular(4)),
+        child: LinearProgressIndicator(minHeight: 4),
+      ),
+      const SizedBox(height: Gap.lg),
+      FilledButton.icon(
+        onPressed: _loading ? null : _login,
+        style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
         icon: const Icon(Icons.refresh),
         label: const Text('تحقق الآن'),
       ),
-      TextButton(onPressed: _cancelPending, child: const Text('رجوع')),
+      const SizedBox(height: Gap.xs),
+      TextButton(
+        onPressed: _cancelPending,
+        style: TextButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+        child: const Text('رجوع'),
+      ),
     ];
+  }
+
+  Widget _idRow(String label, String value) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: Gap.sm),
+      padding: const EdgeInsets.symmetric(horizontal: Gap.md, vertical: Gap.sm),
+      decoration: BoxDecoration(
+        color: AppColors.paper,
+        borderRadius: BorderRadius.circular(Gap.radiusSm),
+      ),
+      child: Row(children: [
+        Text(label, style: const TextStyle(color: AppColors.muted)),
+        const Spacer(),
+        Directionality(
+          textDirection: TextDirection.ltr,
+          child: SelectableText(value, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16, letterSpacing: 1)),
+        ),
+      ]),
+    );
   }
 }

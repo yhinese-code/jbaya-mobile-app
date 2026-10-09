@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../core/format.dart';
 import '../../core/photo_service.dart';
+import '../../core/theme.dart';
 import '../self_service/self_service_screen.dart' show showPayslip;
 import '../shared/photo_dialog.dart';
 import '../shared/ui.dart';
@@ -203,7 +204,7 @@ class _EmployeeProfileScreenState extends State<EmployeeProfileScreen> {
                   decoration: const InputDecoration(labelText: 'مبلغ العقوبة (يُخصم من الراتب)', border: OutlineInputBorder())),
             ],
             if (type == 'suspension')
-              const Padding(padding: EdgeInsets.only(top: 8), child: Text('سيتم إيقاف حساب الموظف فوراً', style: TextStyle(color: Colors.red))),
+              const Padding(padding: EdgeInsets.only(top: 8), child: Text('سيتم إيقاف حساب الموظف فوراً', style: TextStyle(color: AppColors.bad))),
           ]),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء')),
@@ -224,7 +225,7 @@ class _EmployeeProfileScreenState extends State<EmployeeProfileScreen> {
       await showDialog(
         context: context,
         builder: (ctx) => AlertDialog(
-          icon: const Icon(Icons.warning, color: Colors.red),
+          icon: const Icon(Icons.warning, color: AppColors.bad),
           title: const Text('تنبيه'),
           content: Text('لدى الموظف ${res['written_warnings_12m']} إنذارات كتابية خلال 12 شهراً. يُنصح بالإيقاف عن العمل.'),
           actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('حسناً'))],
@@ -249,11 +250,7 @@ class _EmployeeProfileScreenState extends State<EmployeeProfileScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text('ملف الموظف ${widget.code}'),
-        backgroundColor: const Color(0xFF6A1B9A),
-        foregroundColor: Colors.white,
-      ),
+      appBar: portalAppBar(title: 'ملف الموظف ${widget.code}', color: AppColors.hr),
       body: ApiView(
         key: _view,
         path: '/hr/employees/${widget.code}',
@@ -272,25 +269,24 @@ class _EmployeeProfileScreenState extends State<EmployeeProfileScreen> {
           return RefreshIndicator(
             onRefresh: reload,
             child: ListView(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(Gap.md),
               children: [
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                AppCard(
+                  padding: const EdgeInsets.all(Gap.lg),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Row(children: [
-                        CircleAvatar(radius: 28, backgroundColor: active ? Colors.purple.shade50 : Colors.grey.shade300,
-                            child: Icon(Icons.person, size: 32, color: active ? Colors.purple : Colors.grey)),
+                        CircleAvatar(radius: 28, backgroundColor: active ? AppColors.hr.withValues(alpha: 0.10) : AppColors.border,
+                            child: Icon(Icons.person, size: 32, color: active ? AppColors.hr : AppColors.muted)),
                         const SizedBox(width: 12),
                         Expanded(
                           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                             Text('${p['full_name']}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                             Text('${p['employee_code']} | ${p['job_title'] ?? roleLabels[p['role']] ?? ''} | ${p['sector_name'] ?? 'بدون قاطع'}'),
                             Text('المشرف: ${p['supervisor_name'] ?? '-'} | المباشرة: ${p['hire_date'] ?? '-'} | نهاية العقد: ${p['contract_end'] ?? '-'}',
-                                style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                                style: const TextStyle(color: AppColors.muted, fontSize: 12)),
                           ]),
                         ),
-                        StatusChip(active ? 'فعال' : 'موقوف', active ? Colors.green : Colors.red),
+                        StatusChip(active ? 'فعال' : 'موقوف', active ? AppColors.good : AppColors.bad),
                       ]),
                       const Divider(height: 24),
                       Wrap(spacing: 20, runSpacing: 8, children: [
@@ -300,7 +296,7 @@ class _EmployeeProfileScreenState extends State<EmployeeProfileScreen> {
                         Text('الراتب: ${formatIqd(asNum(p['base_salary']))}'),
                         Text('البدلات: ${formatIqd((asNum(p['allowance_transport']) ?? 0) + (asNum(p['allowance_phone']) ?? 0) + (asNum(p['allowance_risk']) ?? 0))}'),
                         if ((asNum(data['cash_in_hand']) ?? 0) > 0) Text('نقد غير مسلَّم: ${formatIqd(asNum(data['cash_in_hand']))}',
-                            style: const TextStyle(color: Colors.red)),
+                            style: const TextStyle(color: AppColors.bad)),
                       ]),
                       if (p['hr_notes'] != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text('ملاحظات: ${p['hr_notes']}')),
                       const SizedBox(height: 12),
@@ -313,59 +309,58 @@ class _EmployeeProfileScreenState extends State<EmployeeProfileScreen> {
                           onPressed: () => _terminate(active),
                           icon: Icon(active ? Icons.person_off : Icons.person_add),
                           label: Text(active ? 'إنهاء الخدمة' : 'إعادة تفعيل'),
-                          style: OutlinedButton.styleFrom(foregroundColor: active ? Colors.red : Colors.green),
+                          style: OutlinedButton.styleFrom(foregroundColor: active ? AppColors.bad : AppColors.good),
                         ),
                       ]),
                     ]),
-                  ),
                 ),
                 const SectionTitle('هذا الشهر'),
-                Wrap(spacing: 10, runSpacing: 10, children: [
-                  _mini('أيام الحضور', '${att['present']}', Colors.green),
-                  _mini('أيام التأخير', '${att['late']}', Colors.orange),
-                  _mini('ساعات العمل', '${att['hours']}', Colors.blue),
+                Wrap(spacing: Gap.sm, runSpacing: Gap.sm, children: [
+                  _mini('أيام الحضور', '${att['present']}', AppColors.good),
+                  _mini('أيام التأخير', '${att['late']}', AppColors.warn),
+                  _mini('ساعات العمل', '${att['hours']}', AppColors.info),
                   ...balances.values.map((b) {
                     final m = b as Map;
-                    return _mini(m['label'] as String, m['remaining'] == null ? '${m['used']} مستخدم' : '${m['remaining']} متبقي', Colors.purple);
+                    return _mini(m['label'] as String, m['remaining'] == null ? '${m['used']} مستخدم' : '${m['remaining']} متبقي', AppColors.hr);
                   }),
                 ]),
                 const SectionTitle('الوثائق'),
-                if (docs.isEmpty) const Text('لا توجد وثائق', style: TextStyle(color: Colors.grey)),
+                if (docs.isEmpty) const Text('لا توجد وثائق', style: TextStyle(color: AppColors.muted)),
                 ...docs.map((d) {
                   final exp = DateTime.tryParse('${d['expires_on'] ?? ''}');
                   final soon = exp != null && exp.difference(DateTime.now()).inDays <= 30;
                   return Card(child: ListTile(
                     leading: const Icon(Icons.description),
                     title: Text('${d['title']}'),
-                    subtitle: Text('${d['doc_type']} | ينتهي: ${d['expires_on'] ?? '-'}', style: TextStyle(color: soon ? Colors.red : null)),
+                    subtitle: Text('${d['doc_type']} | ينتهي: ${d['expires_on'] ?? '-'}', style: TextStyle(color: soon ? AppColors.bad : null)),
                     trailing: d['has_file'] == true
                         ? IconButton(icon: const Icon(Icons.visibility), onPressed: () => showEvidencePhoto(context, '/hr/documents/${d['id']}/file', title: '${d['title']}'))
                         : null,
                   ));
                 }),
                 const SectionTitle('العهدة'),
-                if (custody.isEmpty) const Text('لا توجد عهدة', style: TextStyle(color: Colors.grey)),
+                if (custody.isEmpty) const Text('لا توجد عهدة مسلّمة لهذا الموظف', style: TextStyle(color: AppColors.muted)),
                 ...custody.map((c) => Card(child: ListTile(
                       leading: const Icon(Icons.inventory_2),
                       title: Text('${custodyTypeLabels[c['item_type']] ?? c['item_type']} - ${c['description']}'),
                       subtitle: Text('${c['serial_no'] ?? ''} | ${formatIqd(asNum(c['value_iqd']))} | سُلّمت ${formatDate(c['assigned_at'])}'),
                       trailing: c['status'] == 'assigned'
                           ? TextButton(onPressed: () => _returnCustody(c), child: const Text('تسوية'))
-                          : StatusChip(c['status'] == 'returned' ? 'أُعيدت' : 'مفقودة', statusColor(c['status'] as String?)),
+                          : StatusChip(c['status'] == 'returned' ? 'أُعيدت' : 'مفقودة', statusTone(c['status'] as String?)),
                     ))),
                 const SectionTitle('الإجراءات الانضباطية'),
-                if (disc.isEmpty) const Text('لا توجد', style: TextStyle(color: Colors.grey)),
+                if (disc.isEmpty) const Text('لا توجد إجراءات انضباطية', style: TextStyle(color: AppColors.muted)),
                 ...disc.map((d) => Card(child: ListTile(
-                      leading: const Icon(Icons.gavel, color: Colors.red),
+                      leading: const Icon(Icons.gavel, color: AppColors.bad),
                       title: Text('${disciplineLabels[d['action_type']] ?? d['action_type']}${(asNum(d['penalty_iqd']) ?? 0) > 0 ? ' | ${formatIqd(asNum(d['penalty_iqd']))}' : ''}'),
                       subtitle: Text('${d['effective_date']} | ${d['reason']}'),
                     ))),
                 const SectionTitle('الإجازات'),
-                if (leaves.isEmpty) const Text('لا توجد', style: TextStyle(color: Colors.grey)),
+                if (leaves.isEmpty) const Text('لا توجد إجازات مسجلة', style: TextStyle(color: AppColors.muted)),
                 ...leaves.map((l) => Card(child: ListTile(
                       title: Text('${l['label']} | ${l['days']} يوم'),
                       subtitle: Text('${l['start_date']} ← ${l['end_date']}'),
-                      trailing: StatusChip(leaveStatusLabels[l['status']] ?? '${l['status']}', statusColor(l['status'] as String?)),
+                      trailing: StatusChip(leaveStatusLabels[l['status']] ?? '${l['status']}', statusTone(l['status'] as String?)),
                     ))),
                 const SectionTitle('التقييمات والتدريب والرواتب'),
                 Wrap(spacing: 8, runSpacing: 8, children: [
@@ -396,10 +391,20 @@ class _EmployeeProfileScreenState extends State<EmployeeProfileScreen> {
   Widget _mini(String label, String value, Color color) {
     return Container(
       width: 150,
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(color: color.withValues(alpha: 0.07), borderRadius: BorderRadius.circular(10), border: Border.all(color: color.withValues(alpha: 0.3))),
+      padding: const EdgeInsets.all(Gap.md),
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(Gap.radius),
+        border: const Border(
+          top: BorderSide(color: AppColors.border),
+          bottom: BorderSide(color: AppColors.border),
+          left: BorderSide(color: AppColors.border),
+          right: BorderSide(color: AppColors.border),
+        ),
+      ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+        Text(label, style: const TextStyle(fontSize: 12, color: AppColors.muted)),
+        const SizedBox(height: 2),
         Text(value, style: TextStyle(fontWeight: FontWeight.bold, color: color, fontSize: 16)),
       ]),
     );

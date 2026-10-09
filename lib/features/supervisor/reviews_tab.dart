@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/format.dart';
+import '../../core/theme.dart';
 import '../shared/photo_dialog.dart';
+import '../shared/ui.dart';
 
 // ---------------------------------------------------------------- review queue
 
@@ -62,7 +64,7 @@ class _ReviewsTabState extends State<ReviewsTab> {
     if (confirmed != true) return;
     if (note.length < 3) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('يجب كتابة سبب'), backgroundColor: Colors.red));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('يجب كتابة سبب'), backgroundColor: AppColors.bad));
       }
       return;
     }
@@ -72,7 +74,7 @@ class _ReviewsTabState extends State<ReviewsTab> {
       _load();
     } on ApiException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message), backgroundColor: Colors.red));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message), backgroundColor: AppColors.bad));
       }
     }
   }
@@ -80,63 +82,72 @@ class _ReviewsTabState extends State<ReviewsTab> {
   @override
   Widget build(BuildContext context) {
     if (_loading) return const Center(child: CircularProgressIndicator());
-    if (_error != null) return Center(child: Text(_error!, style: const TextStyle(color: Colors.red)));
+    if (_error != null) {
+      return EmptyState(
+        icon: Icons.cloud_off,
+        title: 'تعذر تحميل البيانات',
+        message: _error,
+        action: OutlinedButton.icon(onPressed: _load, icon: const Icon(Icons.refresh), label: const Text('إعادة المحاولة')),
+      );
+    }
     if (_items.isEmpty) {
       return RefreshIndicator(
         onRefresh: _load,
-        child: ListView(children: const [SizedBox(height: 120), Center(child: Text('لا توجد فواتير بانتظار المراجعة'))]),
+        child: ListView(children: const [
+          SizedBox(height: 80),
+          EmptyState(
+            icon: Icons.task_alt,
+            title: 'لا توجد فواتير بانتظار المراجعة',
+            message: 'ستظهر هنا الفواتير التقديرية والمحجوبة التي تحتاج قرارك',
+          ),
+        ]),
       );
     }
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView.builder(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(Gap.md),
         itemCount: _items.length,
         itemBuilder: (context, i) {
           final b = _items[i];
           final blocked = b['status'] == 'blocked_review';
           final labels = (b['flag_labels'] as List? ?? []).map((e) => e.toString()).toList();
-          return Card(
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Column(
+          return AppCard(
+            accent: blocked ? AppColors.bad : AppColors.warn,
+            child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text('${b['property_code']} - ${b['citizen_name']}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                  Text('${b['address']} | الجابي: ${b['collector_code']}'),
-                  const SizedBox(height: 6),
+                  Text('${b['address']} | الجابي: ${b['collector_code']}', style: const TextStyle(color: AppColors.muted, fontSize: 13)),
+                  const SizedBox(height: Gap.sm),
                   Wrap(
                     spacing: 6,
                     runSpacing: 6,
-                    children: labels
-                        .map((l) => Chip(
-                              label: Text(l, style: const TextStyle(fontSize: 12)),
-                              backgroundColor: blocked ? Colors.red.shade50 : Colors.orange.shade50,
-                            ))
-                        .toList(),
+                    children: labels.map((l) => StatusChip(l, blocked ? AppColors.bad : AppColors.warn)).toList(),
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: Gap.sm),
                   if (b['previous_reading'] != null)
                     Text('القراءة السابقة: ${formatNumber(asNum(b['previous_reading']), decimals: 1)}  |  '
                         'الحالية: ${b['current_reading'] == null ? '-' : formatNumber(asNum(b['current_reading']), decimals: 1)}'),
                   Text('المبلغ التقديري: ${formatIqd(asNum(b['total_amount']))} (${b['period_days']} يوم)'),
                   if (b['ocr_reading'] != null)
                     Text('قراءة الكاميرا (OCR): ${formatNumber(asNum(b['ocr_reading']), decimals: 1)}',
-                        style: const TextStyle(color: Colors.teal)),
-                  const SizedBox(height: 10),
+                        style: const TextStyle(color: AppColors.brand)),
+                  const SizedBox(height: Gap.md),
                   Wrap(
-                    spacing: 8,
+                    spacing: Gap.sm,
+                    runSpacing: Gap.sm,
                     children: [
                       if (!blocked)
                         ElevatedButton(
                           onPressed: () => _decide(b, 'approve', 'الموافقة على التقدير'),
-                          style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
+                          style: ElevatedButton.styleFrom(backgroundColor: AppColors.good, foregroundColor: Colors.white),
                           child: const Text('موافقة'),
                         ),
                       if (blocked)
                         ElevatedButton(
                           onPressed: () => _decide(b, 'rebaseline', 'العداد مُبدَّل: اعتماد القراءة الجديدة كأساس وجباية تقديرية'),
-                          style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white),
+                          style: ElevatedButton.styleFrom(backgroundColor: AppColors.info, foregroundColor: Colors.white),
                           child: const Text('عداد مُبدَّل (أساس جديد)'),
                         ),
                       if (b['has_photo'] == true)
@@ -147,14 +158,13 @@ class _ReviewsTabState extends State<ReviewsTab> {
                         ),
                       OutlinedButton(
                         onPressed: () => _decide(b, 'reject', 'رفض الفاتورة'),
-                        style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
+                        style: OutlinedButton.styleFrom(foregroundColor: AppColors.bad),
                         child: const Text('رفض'),
                       ),
                     ],
                   ),
                 ],
               ),
-            ),
           );
         },
       ),
